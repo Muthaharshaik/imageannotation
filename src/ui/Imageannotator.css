@@ -1,0 +1,1893 @@
+/*
+Image Annotator CSS - Complete Fixed Version with Modal Overlay Fix
+✅ Natural size image display with perfect scrolling
+✅ No zoom buttons - clean interface
+✅ Perfect annotation positioning
+✅ NEW: Enhanced styles for scroll-to-annotation navigation
+✅ FIXED: Modal overlay z-index matching PDF widget approach
+✅ All original functionality preserved
+*/
+
+.mx-imageannotator {
+    font-family: system-ui, -apple-system, sans-serif;
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --primary-color: #667eea;
+    --secondary-color: #764ba2;
+    --text-primary: #1f2937;
+    --text-secondary: #6b7280;
+    --border-color: #e5e7eb;
+    --background-light: #f9fafb;
+    --annotation-color: #3B82F6;
+}
+
+/* Root widget container */
+.mx-imageannotator {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-height: 100vh;
+    background-color: white;
+    position: relative;
+    overflow: hidden;
+    /* ENHANCED: Widget isolation for multiple instances */
+    isolation: isolate;
+}
+
+/* ENHANCED: Widget instance isolation */
+.mx-imageannotator[data-widget-instance] {
+    isolation: isolate;
+}
+
+.mx-imageannotator[data-widget-instance] * {
+    box-sizing: border-box;
+}
+
+/* Image-specific header bar */
+.mx-imageannotator .image-header-bar {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    margin-bottom: 0;
+}
+
+.mx-imageannotator .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mx-imageannotator .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Base button styles */
+.mx-imageannotator .img-button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.mx-imageannotator .img-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.mx-imageannotator .img-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.mx-imageannotator .img-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Maximize/Minimize button styles */
+.mx-imageannotator .img-maximize-minimize-btn {
+    background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+    color: white;
+    border: 2px solid transparent;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.mx-imageannotator .img-maximize-minimize-btn:hover {
+    background: linear-gradient(135deg, #2563EB 0%, #1E3A8A 100%);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.mx-imageannotator .img-maximize-btn {
+    background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+}
+
+.mx-imageannotator .img-maximize-btn:hover {
+    background: linear-gradient(135deg, #2563EB 0%, #1E3A8A 100%);
+}
+
+.mx-imageannotator .img-minimize-btn {
+    background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+}
+
+.mx-imageannotator .img-minimize-btn:hover {
+    background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+}
+
+/* Add annotation button styles */
+.mx-imageannotator .add-dropdown-container {
+    position: relative;
+}
+
+.mx-imageannotator .add-annotation-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background-color: #3b82f6;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    z-index: 101;
+}
+
+.mx-imageannotator .add-annotation-btn:hover:not(:disabled) {
+    background-color: #2563eb;
+    transform: translateY(-1px);
+}
+
+.mx-imageannotator .add-annotation-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mx-imageannotator .add-annotation-btn.annotation-mode {
+    background-color: #ef4444;
+}
+
+.mx-imageannotator .add-annotation-btn.annotation-mode:hover {
+    background-color: #dc2626;
+}
+
+/* Dropdown menu */
+.mx-imageannotator .annotation-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    min-width: 160px;
+    padding: 4px 0;
+    margin-top: 2px;
+}
+
+.mx-imageannotator .dropdown-menu-item {
+    width: 100%;
+    padding: 8px 16px;
+    border: none;
+    background-color: transparent;
+    text-align: left;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background-color 0.2s;
+}
+
+.mx-imageannotator .dropdown-menu-item:hover {
+    background-color: var(--background-light);
+}
+
+.mx-imageannotator .dropdown-menu-item:active {
+    background-color: #e5e7eb;
+}
+
+/* Main content area */
+.mx-imageannotator .main-content {
+    flex: 1;
+    display: flex;
+    background-color: white;
+    height: 100vh;
+    max-height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Image area */
+.mx-imageannotator .image-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+    padding-top: 24px;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.mx-imageannotator .image-container {
+    flex: 1;
+    position: relative;
+    border-radius: 0 0 16px 16px;
+    overflow: hidden;
+    padding: 24px;
+    min-height: 0;
+    height: 100%;
+    max-height: calc(100vh - 140px);
+}
+
+/* White background */
+.mx-imageannotator .white-bg {
+    background: white;
+}
+
+/* FIXED: Scroll container for natural-sized image navigation */
+.mx-imageannotator .zoom-scroll-container {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    position: relative;
+    border-radius: 12px;
+    background-color: #f8f9fa;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    /* Enhanced smooth scrolling for better navigation experience */
+    scroll-behavior: smooth;
+}
+
+.mx-imageannotator .image-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    max-height: 100%;
+}
+
+.mx-imageannotator .image-container-inner {
+    position: relative;
+    display: block;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    margin: 20px;
+    flex-shrink: 0;
+}
+
+.mx-imageannotator .main-image {
+    display: block;
+    cursor: default;
+    border-radius: 4px;
+    margin: 0;
+    padding: 0;
+}
+
+.mx-imageannotator .main-image.annotation-mode {
+    cursor: crosshair;
+}
+
+/* Loading Spinner */
+.mx-imageannotator .image-loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 12px;
+    padding: 60px 40px;
+    text-align: center;
+}
+
+.mx-imageannotator .loading-spinner-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.mx-imageannotator .loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid #e3e3e3;
+    border-top: 4px solid #4F46E5;
+    border-radius: 50%;
+    animation: imageannotator-spin 1s linear infinite;
+    margin-bottom: 24px;
+}
+
+.mx-imageannotator .loading-text {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 500;
+    color: #4F46E5;
+    letter-spacing: 0.5px;
+}
+
+/* Spinner animation */
+@keyframes imageannotator-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Loading states */
+.mx-imageannotator .loading-subtext {
+    margin: 8px 0 0 0;
+    font-size: 14px;
+    color: #9CA3AF;
+    font-style: italic;
+}
+
+/* Point annotation markers */
+.mx-imageannotator .annotation-marker {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid white;
+    cursor: pointer;
+    z-index: 15;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    transition: all 0.3s ease;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: white;
+    opacity: 0.9;
+    background-color: var(--annotation-color);
+}
+
+.mx-imageannotator .annotation-marker:hover {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+
+.mx-imageannotator .annotation-marker.active {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 1;
+    z-index: 20;
+    box-shadow: 0 0 20px var(--annotation-color);
+}
+
+/* Enhanced annotation markers for maximized view */
+.mx-imageannotator.img-maximized .annotation-marker {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+    border-width: 3px;
+}
+
+.mx-imageannotator.img-maximized .annotation-marker:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.mx-imageannotator.img-maximized .annotation-marker.active {
+    transform: translate(-50%, -50%) scale(1.3);
+}
+
+/* Area annotation styles */
+.mx-imageannotator .annotation-area {
+    transition: all 0.3s ease;
+    opacity: 0.8;
+    cursor: pointer;
+}
+
+.mx-imageannotator .annotation-area:hover {
+    opacity: 1;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+    transform: scale(1.02);
+}
+
+.mx-imageannotator .annotation-area.active {
+    opacity: 1;
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.6);
+    border-color: #1d4ed8 !important;
+    transform: scale(1.02);
+}
+
+.mx-imageannotator .area-annotation-label {
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+    transition: all 0.3s ease;
+}
+
+/* Enhanced area annotations for maximized view */
+.mx-imageannotator.img-maximized .annotation-area {
+    border-width: 3px !important;
+}
+
+.mx-imageannotator.img-maximized .area-annotation-label {
+    font-size: 14px;
+    padding: 4px 8px;
+    top: -30px;
+}
+
+.mx-imageannotator .drawing-area {
+    transition: all 0.1s ease;
+    pointer-events: none;
+}
+
+/* Annotations sidebar */
+.mx-imageannotator .annotations-sidebar {
+    flex: 0 0 350px;
+    background-color: white;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border-color);
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.mx-imageannotator .sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.mx-imageannotator .sidebar-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mx-imageannotator .annotation-count-badge {
+    background-color: #3b82f6;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 20px;
+    text-align: center;
+}
+
+.mx-imageannotator .annotations-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    max-height: calc(100vh - 300px);
+}
+
+.mx-imageannotator .annotation-item {
+    margin-bottom: 16px;
+    cursor: pointer;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background-color: white;
+    transition: all 0.2s ease;
+    /* NEW: Enhanced visual cues for navigation */
+    position: relative;
+}
+
+/* NEW: Enhanced hover effects for better navigation feedback */
+.mx-imageannotator .annotation-item:hover {
+    background-color: var(--background-light);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: #3b82f6;
+}
+
+/* NEW: Enhanced active state for selected annotation */
+.mx-imageannotator .annotation-item.selected {
+    background-color: #f0f9ff;
+    border-color: #3b82f6;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+    /* Add navigation indicator */
+    border-left: 4px solid #3b82f6;
+}
+
+/* NEW: Navigation hint styling */
+.mx-imageannotator .navigation-hint {
+    opacity: 0.6;
+    transition: all 0.2s ease;
+    font-size: 10px;
+    margin-left: 4px;
+}
+
+.mx-imageannotator .annotation-item:hover .navigation-hint {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* NEW: Visual feedback for clickable navigation */
+.mx-imageannotator .annotation-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 0 3px 3px 0;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.mx-imageannotator .annotation-item:hover::before,
+.mx-imageannotator .annotation-item.selected::before {
+    opacity: 1;
+}
+
+.mx-imageannotator .annotation-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.mx-imageannotator .title-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mx-imageannotator .annotation-number {
+    color: #3b82f6;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.mx-imageannotator .annotation-type {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.mx-imageannotator .action-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.mx-imageannotator .action-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.mx-imageannotator .action-btn:hover {
+    transform: scale(1.1);
+}
+
+.mx-imageannotator .edit-btn {
+    background-color: #f59e0b;
+}
+
+.mx-imageannotator .edit-btn:hover {
+    background-color: #d97706;
+}
+
+.mx-imageannotator .delete-btn {
+    background-color: #6b7280;
+}
+
+.mx-imageannotator .delete-btn:hover {
+    background-color: #4b5563;
+}
+
+.mx-imageannotator .annotation-content {
+    margin-bottom: 12px;
+}
+
+.mx-imageannotator .annotation-text {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+/* Read More/Read Less Styles */
+.mx-imageannotator .read-more-btn {
+    background: none;
+    border: none;
+    color: #3b82f6;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+    margin-top: 8px;
+    text-decoration: underline;
+    transition: color 0.2s ease;
+}
+
+.mx-imageannotator .read-more-btn:hover {
+    color: #2563eb;
+}
+
+.mx-imageannotator .annotation-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.mx-imageannotator .author {
+    font-weight: 500;
+}
+
+.mx-imageannotator .date {
+    font-weight: normal;
+}
+
+/* NEW: Enhanced no annotations message with navigation context */
+.mx-imageannotator .no-annotations {
+    text-align: center;
+    padding: 40px 20px;
+    color: #9ca3af;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* FIXED: MODAL OVERLAY DESIGN - Remove ultra-high z-index conflicts */
+/* ================================================================== */
+/* FIXED: Using same z-index approach as PDF widget for consistency */
+/* ================================================================== */
+
+/* FIXED: Main annotation form overlay - Let inline styles handle z-index */
+.mx-imageannotator .img-annotation-form-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    /* REMOVED: Conflicting z-index - let inline styles handle this */
+}
+
+/* FIXED: File preview overlay - Let inline styles handle z-index */
+.mx-imageannotator .img-file-preview-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    /* REMOVED: Conflicting z-index - let inline styles handle this */
+}
+
+/* Modal containers - simplified styling */
+.mx-imageannotator .img-annotation-form-modal {
+    background-color: white;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 85vh;
+    overflow: hidden;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    animation: modalSlideIn 0.3s ease-out;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.mx-imageannotator .img-file-preview-modal {
+    background-color: white;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    animation: modalSlideIn 0.3s ease-out;
+    position: relative;
+}
+
+/* Modal slide-in animation */
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Form header styles */
+.mx-imageannotator .img-annotation-form-header {
+    background-color: #f8fafc;
+    color: #1e293b;
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.mx-imageannotator .img-annotation-form-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.mx-imageannotator .img-annotation-form-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background-color: #f1f5f9;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #64748b;
+    transition: all 0.2s ease;
+}
+
+.mx-imageannotator .img-annotation-form-close:hover {
+    background-color: #e2e8f0;
+    color: #475569;
+}
+
+.mx-imageannotator .img-annotation-form-body {
+    padding: 24px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.mx-imageannotator .img-annotation-form-footer {
+    padding: 16px 24px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    border-top: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+    flex-shrink: 0;
+}
+
+/* File preview header styles */
+.mx-imageannotator .img-file-preview-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.mx-imageannotator .img-file-preview-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 16px;
+}
+
+.mx-imageannotator .img-file-preview-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background-color: #f3f4f6;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #6b7280;
+    transition: all 0.2s ease;
+}
+
+.mx-imageannotator .img-file-preview-close:hover {
+    background-color: #e5e7eb;
+    color: #374151;
+}
+
+.mx-imageannotator .img-file-preview-content {
+    flex: 1;
+    padding: 24px;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Button styles */
+.mx-imageannotator .btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.mx-imageannotator .btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mx-imageannotator .btn:active {
+    transform: translateY(0);
+}
+
+.mx-imageannotator .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.mx-imageannotator .btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.mx-imageannotator .btn-save {
+    background-color: #3b82f6;
+    color: white;
+}
+
+.mx-imageannotator .btn-save:hover:not(:disabled) {
+    background-color: #2563eb;
+}
+
+.mx-imageannotator .btn-cancel {
+    background-color: #6b7280;
+    color: white;
+}
+
+.mx-imageannotator .btn-cancel:hover {
+    background-color: #4b5563;
+}
+
+/* Form section styles */
+.mx-imageannotator .form-section {
+    margin-bottom: 24px;
+}
+
+.mx-imageannotator .form-section:last-child {
+    margin-bottom: 0;
+}
+
+.mx-imageannotator .form-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #475569;
+}
+
+.mx-imageannotator .form-section-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.mx-imageannotator .comment-form-group {
+    margin-bottom: 20px;
+}
+
+.mx-imageannotator .comment-form-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+/* Rich Text Editor Styles */
+.mx-imageannotator .richtext-toolbar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    padding: 8px;
+    background-color: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.mx-imageannotator .richtext-btn {
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    background-color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    color: #374151;
+}
+
+.mx-imageannotator .richtext-btn:hover {
+    background-color: #f3f4f6;
+    border-color: #9ca3af;
+}
+
+.mx-imageannotator .richtext-btn:active {
+    background-color: #e5e7eb;
+}
+
+/* Rich Text Editor Main Styles */
+.mx-imageannotator .richtext-editor {
+    min-height: 120px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    background-color: white;
+    font-size: 14px;
+    line-height: 1.6;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+    width: 100%;
+    color: #374151;
+    display: block;
+    position: relative;
+}
+
+.mx-imageannotator .richtext-editor:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px #3b82f6;
+}
+
+/* Placeholder Text */
+.mx-imageannotator .richtext-editor:empty::before {
+    content: attr(data-placeholder);
+    color: #9ca3af;
+    font-style: italic;
+    pointer-events: none;
+    position: absolute;
+    left: 16px;
+    top: 16px;
+}
+
+.mx-imageannotator .richtext-editor:focus:empty::before {
+    opacity: 0.5;
+}
+
+/* Rich text content styling */
+.mx-imageannotator .richtext-editor p {
+    margin: 0 0 8px 0;
+    color: #374151;
+}
+
+.mx-imageannotator .richtext-editor p:last-child {
+    margin-bottom: 0;
+}
+
+.mx-imageannotator .richtext-editor strong {
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.mx-imageannotator .richtext-editor em {
+    font-style: italic;
+}
+
+.mx-imageannotator .richtext-editor ul {
+    margin: 8px 0;
+    padding-left: 20px;
+    color: #374151;
+}
+
+.mx-imageannotator .richtext-editor li {
+    margin: 4px 0;
+}
+
+.mx-imageannotator .richtext-editor a {
+    color: #3b82f6;
+    text-decoration: underline;
+}
+
+/* Enhanced annotation display with rich text support */
+.mx-imageannotator .annotation-rich-content {
+    margin: 8px 0;
+}
+
+.mx-imageannotator .annotation-rich-content p {
+    margin: 0 0 4px 0;
+    font-size: 14px;
+    line-height: 1.4;
+    color: #374151;
+}
+
+.mx-imageannotator .annotation-rich-content strong {
+    font-weight: 600;
+}
+
+.mx-imageannotator .annotation-rich-content em {
+    font-style: italic;
+}
+
+.mx-imageannotator .annotation-rich-content ul {
+    margin: 4px 0;
+    padding-left: 16px;
+}
+
+.mx-imageannotator .annotation-rich-content a {
+    color: #3b82f6;
+    text-decoration: underline;
+}
+
+/* File Upload Styles */
+.mx-imageannotator .file-upload-area {
+    margin-bottom: 16px;
+}
+
+.mx-imageannotator .file-input {
+    display: none !important;
+}
+
+.mx-imageannotator .file-upload-btn {
+    display: inline-block;
+    padding: 10px 16px;
+    border: 2px dashed #d1d5db;
+    border-radius: 8px;
+    background-color: #f9fafb;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 14px;
+    color: #6b7280;
+    text-align: center;
+    font-weight: 500;
+    position: relative;
+    z-index: 1;
+}
+
+.mx-imageannotator .file-upload-btn:hover {
+    border-color: #3b82f6;
+    background-color: #f0f9ff;
+    color: #3b82f6;
+}
+
+.mx-imageannotator .file-upload-btn-small {
+    padding: 8px 16px;
+    font-size: 14px;
+    background-color: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mx-imageannotator .file-upload-btn-small:hover {
+    background-color: #e5e7eb;
+}
+
+.mx-imageannotator .uploaded-files-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.mx-imageannotator .uploaded-file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background-color: #f3f4f6;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+}
+
+.mx-imageannotator .file-icon {
+    font-size: 14px;
+    margin-right: 8px;
+}
+
+.mx-imageannotator .file-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #1f2937;
+    margin-right: 8px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mx-imageannotator .file-size {
+    font-size: 12px;
+    color: #6b7280;
+    margin-right: 8px;
+}
+
+.mx-imageannotator .file-remove-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background-color: #ef4444;
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mx-imageannotator .file-remove-btn:hover {
+    background-color: #dc2626;
+    transform: scale(1.05);
+}
+
+/* Reference Document Styles */
+.mx-imageannotator .reference-search-container {
+    position: relative;
+    width: 100%;
+}
+
+.mx-imageannotator .reference-search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.mx-imageannotator .reference-search-input {
+    width: 100%;
+    padding: 12px 16px;
+    padding-right: 50px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    background-color: white;
+    color: #374151;
+}
+
+.mx-imageannotator .reference-search-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.mx-imageannotator .reference-search-input::placeholder {
+    color: #9ca3af;
+}
+
+.mx-imageannotator .reference-dropdown-arrow {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6b7280;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 2;
+    padding: 4px;
+    border-radius: 4px;
+    user-select: none;
+}
+
+.mx-imageannotator .reference-dropdown-arrow:hover {
+    background-color: #f3f4f6;
+    color: #374151;
+}
+
+.mx-imageannotator .reference-clear-button {
+    position: absolute;
+    right: 35px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 50%;
+    background-color: #ef4444;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 3;
+}
+
+.mx-imageannotator .reference-clear-button:hover {
+    background-color: #dc2626;
+    transform: translateY(-50%) scale(1.1);
+}
+
+.mx-imageannotator .reference-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: white;
+    border: 2px solid #e5e7eb;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: -1px;
+}
+
+.mx-imageannotator .reference-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.mx-imageannotator .reference-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.mx-imageannotator .reference-dropdown-item:hover {
+    background-color: #f0f9ff;
+    color: #1e40af;
+}
+
+.mx-imageannotator .reference-doc-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.mx-imageannotator .reference-doc-name {
+    font-size: 14px;
+    color: #374151;
+    line-height: 1.4;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mx-imageannotator .reference-dropdown-item:hover .reference-doc-name {
+    color: #1e40af;
+}
+
+.mx-imageannotator .reference-no-results {
+    padding: 16px;
+    text-align: center;
+    color: #9ca3af;
+    font-style: italic;
+    font-size: 14px;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+/* User display */
+.mx-imageannotator .user-display {
+    font-size: 12px;
+    color: #6b7280;
+    font-style: italic;
+    margin-top: 16px;
+    padding: 8px 12px;
+    background-color: #f9fafb;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+}
+
+/* Annotation files display */
+.mx-imageannotator .annotation-files {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background-color: #f8fafc;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+}
+
+.mx-imageannotator .annotation-files-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.mx-imageannotator .annotation-file-item {
+    font-size: 12px;
+    color: #4b5563;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mx-imageannotator .annotation-file-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Reference document display */
+.mx-imageannotator .annotation-reference-doc {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background-color: #f0f9ff;
+    border-radius: 6px;
+    border: 1px solid #0ea5e9;
+}
+
+.mx-imageannotator .reference-doc-item {
+    font-size: 12px;
+    color: #0369a1;
+    padding: 4px 8px;
+    background-color: #e0f2fe;
+    border-radius: 4px;
+    border: 1px solid #0ea5e9;
+    transition: all 0.2s ease;
+}
+
+.mx-imageannotator .reference-doc-item:hover {
+    background-color: #bae6fd;
+}
+
+/* Clickable file styles */
+.mx-imageannotator .clickable-file {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin: 2px 0;
+    display: inline-block;
+}
+
+.mx-imageannotator .clickable-file:hover {
+    background-color: #f3f4f6;
+    color: #3b82f6;
+    transform: translateX(4px);
+}
+
+.mx-imageannotator .clickable-file:active {
+    transform: translateX(2px);
+}
+
+/* File preview loading styles */
+.mx-imageannotator .img-file-preview-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: #6b7280;
+}
+
+.mx-imageannotator .img-file-preview-loading .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #e3e3e3;
+    border-top: 3px solid #3b82f6;
+    border-radius: 50%;
+    animation: imageannotator-spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+.mx-imageannotator .img-file-preview-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mx-imageannotator .img-file-preview-download {
+    text-align: center;
+    padding: 40px;
+}
+
+.mx-imageannotator .img-file-preview-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.mx-imageannotator .img-file-preview-download p {
+    margin: 0 0 20px 0;
+    font-size: 16px;
+    color: #6b7280;
+}
+
+.mx-imageannotator .img-file-preview-download-btn {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #3b82f6;
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.mx-imageannotator .img-file-preview-download-btn:hover {
+    background-color: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Maximized state styles */
+.mx-imageannotator.img-maximized {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 50000 !important;
+    background: white;
+    box-shadow: none;
+    border-radius: 0;
+    margin: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+}
+
+.mx-imageannotator.img-maximized .main-content {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    min-height: 100vh !important;
+    overflow: hidden !important;
+}
+
+.mx-imageannotator.img-maximized .image-area {
+    flex: 1;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    padding: 12px;
+    overflow: hidden !important;
+}
+
+.mx-imageannotator.img-maximized .image-header-bar {
+    margin-bottom: 0;
+    border-radius: 8px;
+}
+
+.mx-imageannotator.img-maximized .image-container {
+    flex: 1;
+    height: 100% !important;
+    max-height: calc(100vh - 80px) !important;
+    min-height: 0 !important;
+    border-radius: 0 0 12px 12px;
+    padding: 12px;
+    overflow: hidden !important;
+}
+
+.mx-imageannotator.img-maximized .zoom-scroll-container {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    overflow: auto !important;
+}
+
+.mx-imageannotator.img-maximized .image-container-inner {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    margin: 20px;
+    position: relative;
+    display: block;
+}
+
+.mx-imageannotator.img-maximized .annotations-sidebar {
+    flex: 0 0 350px;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    border-radius: 0;
+    overflow-y: auto;
+}
+
+/* Loading state adjustments for maximized mode */
+.mx-imageannotator.img-maximized .image-loading-container {
+    min-height: calc(100vh - 200px) !important;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Error state adjustments for maximized mode */
+.mx-imageannotator.img-maximized .error-content {
+    min-height: calc(100vh - 200px) !important;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Error and Empty States */
+.mx-imageannotator.mx-imageannotator-error {
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mx-imageannotator .error-content {
+    padding: 40px;
+    text-align: center;
+    color: #dc3545;
+}
+
+.mx-imageannotator .error-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.mx-imageannotator .error-message {
+    margin: 0;
+    font-size: 16px;
+}
+
+.mx-imageannotator .retry-button {
+    margin-top: 16px;
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.mx-imageannotator .retry-button:hover {
+    background-color: #0056b3;
+}
+
+/* Smooth transitions for maximize/minimize */
+.mx-imageannotator {
+    transition: all 0.3s ease-in-out;
+}
+
+.mx-imageannotator .image-wrapper,
+.mx-imageannotator .image-container,
+.mx-imageannotator .image-area,
+.mx-imageannotator .main-image {
+    transition: all 0.3s ease-in-out;
+}
+
+.mx-imageannotator.img-maximized {
+    transition: all 0.3s ease-in-out;
+}
+
+.mx-imageannotator.img-maximized .image-wrapper,
+.mx-imageannotator.img-maximized .image-container,
+.mx-imageannotator.img-maximized .image-area,
+.mx-imageannotator.img-maximized .main-image {
+    transition: all 0.3s ease-in-out;
+}
+
+/* Focus outline for accessibility */
+.mx-imageannotator .img-maximize-minimize-btn:focus {
+    outline: 2px solid rgba(59, 130, 246, 0.5);
+    outline-offset: 2px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .mx-imageannotator .main-content {
+        flex-direction: column;
+        height: 100vh !important;
+        max-height: 100vh !important;
+    }
+    
+    .mx-imageannotator .image-area {
+        flex: 1;
+        min-height: 0;
+        max-height: 60vh;
+        padding: 12px;
+    }
+    
+    .mx-imageannotator .image-header-bar {
+        padding: 8px 12px;
+        margin-bottom: 0;
+    }
+    
+    .mx-imageannotator .image-container {
+        height: 100%;
+        max-height: 100%;
+        padding: 12px;
+    }
+    
+    .mx-imageannotator .zoom-scroll-container {
+        height: 100%;
+        max-height: 100%;
+        min-height: 250px;
+    }
+    
+    .mx-imageannotator .annotations-sidebar {
+        flex: 1;
+        width: 100% !important;
+        max-height: 40vh;
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+        overflow-y: auto;
+    }
+    
+    /* Mobile: Show navigation hint more prominently */
+    .mx-imageannotator .navigation-hint {
+        opacity: 1 !important;
+        font-size: 12px !important;
+    }
+    
+    /* Mobile modal adjustments */
+    .mx-imageannotator .img-annotation-form-overlay,
+    .mx-imageannotator .img-file-preview-overlay {
+        padding: 10px;
+    }
+    
+    .mx-imageannotator .img-annotation-form-modal,
+    .mx-imageannotator .img-file-preview-modal {
+        margin: 10px;
+        max-width: calc(100% - 20px);
+        max-height: calc(100vh - 40px);
+    }
+    
+    .mx-imageannotator .img-annotation-form-body {
+        padding: 20px;
+        max-height: calc(80vh - 200px);
+        overflow-y: auto;
+    }
+    
+    .mx-imageannotator .img-annotation-form-footer {
+        padding: 16px 20px;
+    }
+    
+    .mx-imageannotator .img-file-preview-content {
+        padding: 16px;
+        max-height: calc(70vh - 120px);
+        overflow: auto;
+    }
+    
+    .mx-imageannotator .img-file-preview-header {
+        padding: 16px;
+    }
+    
+    .mx-imageannotator .img-file-preview-title {
+        font-size: 16px;
+    }
+    
+    .mx-imageannotator .loading-spinner {
+        width: 50px !important;
+        height: 50px !important;
+    }
+    
+    .mx-imageannotator .loading-text {
+        font-size: 16px !important;
+    }
+    
+    .mx-imageannotator .reference-search-input {
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    /* Responsive adjustments for maximized mode */
+    .mx-imageannotator.img-maximized .image-header-bar {
+        padding: 8px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .mx-imageannotator.img-maximized .header-left,
+    .mx-imageannotator.img-maximized .header-right {
+        gap: 8px;
+    }
+    
+    .mx-imageannotator.img-maximized .img-button {
+        padding: 6px 12px;
+        font-size: 12px;
+        min-height: 32px;
+    }
+    
+    .mx-imageannotator.img-maximized .main-content {
+        height: 100vh !important;
+        flex-direction: column;
+    }
+    
+    .mx-imageannotator.img-maximized .image-area {
+        flex: 1;
+        height: 60% !important;
+        max-height: 60% !important;
+        width: 100% !important;
+        padding: 8px !important;
+        min-height: 0 !important;
+    }
+    
+    .mx-imageannotator.img-maximized .image-container {
+        height: 100% !important;
+        max-height: 100% !important;
+        padding: 8px !important;
+    }
+    
+    .mx-imageannotator.img-maximized .zoom-scroll-container {
+        height: 100% !important;
+        max-height: 100% !important;
+        min-height: 200px;
+    }
+    
+    .mx-imageannotator.img-maximized .annotations-sidebar {
+        flex: 1;
+        height: 40% !important;
+        max-height: 40% !important;
+        width: 100% !important;
+        border-top: 1px solid #e5e7eb;
+        border-left: none;
+        overflow-y: auto;
+    }
+}
+
+/* Scrollbar styling with enhanced navigation feedback */
+.mx-imageannotator .annotations-list::-webkit-scrollbar,
+.mx-imageannotator .reference-dropdown-menu::-webkit-scrollbar,
+.mx-imageannotator .img-annotation-form-body::-webkit-scrollbar,
+.mx-imageannotator .zoom-scroll-container::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.mx-imageannotator .annotations-list::-webkit-scrollbar-track,
+.mx-imageannotator .reference-dropdown-menu::-webkit-scrollbar-track,
+.mx-imageannotator .img-annotation-form-body::-webkit-scrollbar-track,
+.mx-imageannotator .zoom-scroll-container::-webkit-scrollbar-track {
+    background: var(--background-light);
+    border-radius: 3px;
+}
+
+.mx-imageannotator .annotations-list::-webkit-scrollbar-thumb,
+.mx-imageannotator .reference-dropdown-menu::-webkit-scrollbar-thumb,
+.mx-imageannotator .img-annotation-form-body::-webkit-scrollbar-thumb,
+.mx-imageannotator .zoom-scroll-container::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+    transition: background 0.2s ease;
+}
+
+.mx-imageannotator .annotations-list::-webkit-scrollbar-thumb:hover,
+.mx-imageannotator .reference-dropdown-menu::-webkit-scrollbar-thumb:hover,
+.mx-imageannotator .img-annotation-form-body::-webkit-scrollbar-thumb:hover,
+.mx-imageannotator .zoom-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* Focus styles for accessibility */
+.mx-imageannotator button:focus,
+.mx-imageannotator input:focus,
+.mx-imageannotator textarea:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+/* FIXED: Enhanced widget isolation for multiple instances with proper z-index management */
+.mx-imageannotator[data-widget-id] {
+    isolation: isolate;
+}
+
+.mx-imageannotator[data-widget-id] * {
+    box-sizing: border-box;
+}
+
+.mx-imageannotator[data-widget-id] .annotation-dropdown-menu,
+.mx-imageannotator[data-widget-id] .reference-dropdown-menu {
+    z-index: 1000;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .mx-imageannotator .img-maximize-minimize-btn {
+        border: 2px solid currentColor;
+    }
+    
+    .mx-imageannotator.img-maximized {
+        border: 2px solid black;
+    }
+    
+    .mx-imageannotator .img-annotation-form-overlay,
+    .mx-imageannotator .img-file-preview-overlay {
+        background-color: rgba(0, 0, 0, 0.9);
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .mx-imageannotator,
+    .mx-imageannotator.img-maximized,
+    .mx-imageannotator .img-button,
+    .mx-imageannotator .zoom-scroll-container,
+    .mx-imageannotator .img-annotation-form-modal,
+    .mx-imageannotator .img-file-preview-modal {
+        transition: none;
+        scroll-behavior: auto;
+        animation: none;
+    }
+}
+
+/* Dark mode support (if applicable) */
+@media (prefers-color-scheme: dark) {
+    .mx-imageannotator.img-maximized {
+        background: #1f2937;
+        color: white;
+    }
+    
+    .mx-imageannotator .image-header-bar {
+        background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+    }
+    
+    .mx-imageannotator .img-annotation-form-modal,
+    .mx-imageannotator .img-file-preview-modal {
+        background-color: #1f2937;
+        color: white;
+    }
+}
