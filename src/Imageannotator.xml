@@ -28,16 +28,16 @@
                     <attributeType name="String"/>
                 </attributeTypes>
             </property>
-            <property key="awsSessionToken" type="attribute" required="true">
-                <caption>AWS Session Token</caption>
-                <description>AWS Session Token for S3 access</description>
+            <property key="awsRegion" type="attribute" required="true">
+                <caption>AWS Region</caption>
+                <description>AWS region where S3 bucket is located</description>
                 <attributeTypes>
                     <attributeType name="String"/>
                 </attributeTypes>
             </property>
-            <property key="awsRegion" type="attribute" required="true">
-                <caption>AWS Region</caption>
-                <description>AWS region where S3 bucket is located</description>
+            <property key="awsSessionToken" type="attribute" required="true">
+                <caption>AWS Session Token</caption>
+                <description>Temporary AWS Session Token</description>
                 <attributeTypes>
                     <attributeType name="String"/>
                 </attributeTypes>

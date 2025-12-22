@@ -14,7 +14,7 @@ let globalWidgetCounter = 0;
 function Imageannotator(props) {
     const {
         awsAccessKey,
-        awsSecretKey, 
+        awsSecretKey,
         awsSessionToken,
         awsRegion,
         s3BucketName,
@@ -341,10 +341,9 @@ function Imageannotator(props) {
             queryParams.set('X-Amz-Credential', `${accessKey}/${credentialScope}`);
             queryParams.set('X-Amz-Date', amzDate);
             queryParams.set('X-Amz-Expires', '3600');
+            queryParams.set("X-Amz-Security-Token", sessionToken);
             queryParams.set('X-Amz-SignedHeaders', 'host');
-            if(sessionToken) {
-                queryParams.set('X-Amz-Security-Token', sessionToken)
-            }
+
             
             const canonicalQuerystring = queryParams.toString();
             const canonicalHeaders = `host:${bucket}.s3.${region}.amazonaws.com\n`;
@@ -395,7 +394,7 @@ function Imageannotator(props) {
             if (!awsAccessKey?.value) missingParams.push('accessKey');
             if (!awsSecretKey?.value) missingParams.push('secretKey');
             if (!awsRegion?.value) missingParams.push('region');
-            if (!awsSessionToken?.value) missingParams.push('Session Token');
+            if (!awsSessionToken?.value) missingParams.push('sessionToken')
             
             const errorMsg = `Missing required AWS configuration: ${missingParams.join(', ')}`;
             console.error(`❌ [Widget ${widgetInstanceId}] ${errorMsg}`);
@@ -419,6 +418,7 @@ function Imageannotator(props) {
                 awsAccessKey.value,
                 awsSecretKey.value,
                 awsSessionToken.value
+
             );
             
             // Test the URL before setting it
@@ -450,7 +450,7 @@ function Imageannotator(props) {
             setImageError(`Failed to generate image URL: ${error.message}`);
             setLoadingImage(false);
         }
-    }, [s3BucketName, s3FileName, awsAccessKey, awsSecretKey, awsSessionToken, awsRegion, generateSignedUrl, widgetInstanceId]);
+    }, [s3BucketName, s3FileName, awsAccessKey, awsSecretKey, awsRegion, awsSessionToken,generateSignedUrl, widgetInstanceId]);
 
     // Load image URL when AWS credentials change
     useEffect(() => {
@@ -458,7 +458,7 @@ function Imageannotator(props) {
             s3BucketName?.value && s3FileName?.value && awsSessionToken?.value) {
             generateImageUrl();
         }
-    }, [awsAccessKey, awsSecretKey, awsRegion, s3BucketName, s3FileName, generateImageUrl, awsSessionToken]);
+    }, [awsAccessKey, awsSecretKey, awsRegion, s3BucketName, s3FileName, awsSessionToken, generateImageUrl]);
 
     // Parse reference documents
     useEffect(() => {
