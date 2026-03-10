@@ -15,7 +15,6 @@ function Imageannotator(props) {
     const {
         awsAccessKey,
         awsSecretKey,
-        awsSessionToken,
         awsRegion,
         s3BucketName,
         s3FileName,
@@ -297,8 +296,25 @@ function Imageannotator(props) {
         console.log(`🔒 [Widget ${widgetInstanceId}] Annotations access updated:`, shouldShowButton);
     }, [allowAnnotations, annotationMode, readOnly, widgetInstanceId]);
 
+    useEffect(() => {
+    if (showForm && richTextRef.current) {
+        // Small timeout ensures DOM is fully mounted
+        setTimeout(() => {
+            richTextRef.current.focus();
+
+            // Optional: move cursor to end (recommended)
+            const range = document.createRange();
+            const selection = window.getSelection();
+            range.selectNodeContents(richTextRef.current);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }, 50);
+    }
+    }, [showForm]);
+
     // Enhanced AWS Signature V4 implementation
-    const generateSignedUrl = useCallback(async (bucket, key, region, accessKey, secretKey, sessionToken) => {
+    const generateSignedUrl = useCallback(async (bucket, key, region, accessKey, secretKey) => {
         try {
             console.log(`🔗 [Widget ${widgetInstanceId}] Generating signed URL for:`, { bucket, key: key.substring(0, 50) + '...' });
             
@@ -341,7 +357,6 @@ function Imageannotator(props) {
             queryParams.set('X-Amz-Credential', `${accessKey}/${credentialScope}`);
             queryParams.set('X-Amz-Date', amzDate);
             queryParams.set('X-Amz-Expires', '3600');
-            queryParams.set("X-Amz-Security-Token", sessionToken);
             queryParams.set('X-Amz-SignedHeaders', 'host');
 
             
@@ -387,14 +402,13 @@ function Imageannotator(props) {
     // Generate image URL with enhanced error handling
     const generateImageUrl = useCallback(async () => {
         if (!s3BucketName?.value || !s3FileName?.value || !awsAccessKey?.value || 
-            !awsSecretKey?.value || !awsRegion?.value || !awsSessionToken?.value) {
+            !awsSecretKey?.value || !awsRegion?.value) {
             const missingParams = [];
             if (!s3BucketName?.value) missingParams.push('bucket');
             if (!s3FileName?.value) missingParams.push('fileName');
             if (!awsAccessKey?.value) missingParams.push('accessKey');
             if (!awsSecretKey?.value) missingParams.push('secretKey');
             if (!awsRegion?.value) missingParams.push('region');
-            if (!awsSessionToken?.value) missingParams.push('sessionToken')
             
             const errorMsg = `Missing required AWS configuration: ${missingParams.join(', ')}`;
             console.error(`❌ [Widget ${widgetInstanceId}] ${errorMsg}`);
@@ -416,8 +430,7 @@ function Imageannotator(props) {
                 s3FileName.value,
                 awsRegion.value,
                 awsAccessKey.value,
-                awsSecretKey.value,
-                awsSessionToken.value
+                awsSecretKey.value
 
             );
             
@@ -450,15 +463,15 @@ function Imageannotator(props) {
             setImageError(`Failed to generate image URL: ${error.message}`);
             setLoadingImage(false);
         }
-    }, [s3BucketName, s3FileName, awsAccessKey, awsSecretKey, awsRegion, awsSessionToken,generateSignedUrl, widgetInstanceId]);
+    }, [s3BucketName, s3FileName, awsAccessKey, awsSecretKey, awsRegion ,generateSignedUrl, widgetInstanceId]);
 
     // Load image URL when AWS credentials change
     useEffect(() => {
         if (awsAccessKey?.value && awsSecretKey?.value && awsRegion?.value && 
-            s3BucketName?.value && s3FileName?.value && awsSessionToken?.value) {
+            s3BucketName?.value && s3FileName?.value) {
             generateImageUrl();
         }
-    }, [awsAccessKey, awsSecretKey, awsRegion, s3BucketName, s3FileName, awsSessionToken, generateImageUrl]);
+    }, [awsAccessKey, awsSecretKey, awsRegion, s3BucketName, s3FileName, generateImageUrl]);
 
     // Parse reference documents
     useEffect(() => {
