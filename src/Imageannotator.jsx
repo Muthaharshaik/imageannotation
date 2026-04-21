@@ -27,6 +27,10 @@ function Imageannotator(props) {
         allowAnnotations,
         annotationMode,
         referenceDocuments,
+        isAIGenerated,
+        aiAnnotationsData,
+        userRole,
+        authorID,
         name,
         tabIndex,
         style,
@@ -115,20 +119,32 @@ function Imageannotator(props) {
     
     // Read more/less state for annotations
     const [expandedAnnotations, setExpandedAnnotations] = useState(new Set());
+
+    // AI annotations state
+    const [aiAnnotations, setAiAnnotations] = useState([]);
+    const [activeTab, setActiveTab] = useState('human');
     
     // Get current user
     const currentUser = (userName && userName.value) ? userName.value : 
                         (typeof userName === 'string' ? userName : "Unknown User");
 
-    const ANNOTATION_COLOR = '#3B82F6';
-    const MAX_COMMENT_LENGTH = 100;
+    const currentUserRole = (userRole && userRole.value !== undefined) ? (userRole.value || '') :
+                            (typeof userRole === 'string' ? userRole : '');
 
-    // ENHANCED: Debug logging function
+    const currentAuthorId = (authorID && authorID.value !== undefined) ? (authorID.value || '') :
+                            (typeof authorID === 'string' ? authorID : '');
+
+    const ANNOTATION_COLOR = '#3B82F6';
+    const AI_ANNOTATION_COLOR = '#F59E0B';
+    const MAX_COMMENT_LENGTH = 100;
+    const isAI = isAIGenerated?.value === true;
+
+    // Debug logging function
     const addDebugLog = useCallback((message) => {
         console.log(`[Widget ${widgetInstanceId}] ${message}`);
     }, [widgetInstanceId]);
 
-    // ENHANCED: Execute Mendix microflow with proper error handling
+    // Execute Mendix microflow with proper error handling
     const executeMendixAction = useCallback((action, actionName) => {
         if (!action) {
             addDebugLog(`⚠️ ${actionName} action not configured`);
@@ -138,27 +154,21 @@ function Imageannotator(props) {
         addDebugLog(`📞 Executing ${actionName} microflow...`);
         
         try {
-            // Method 1: Check if action has execute method (common pattern)
             if (action && typeof action.execute === 'function') {
                 addDebugLog(`🎯 Calling ${actionName} via execute() method`);
                 action.execute();
                 addDebugLog(`✅ ${actionName} microflow executed successfully via execute()`);
                 return true;
             }
-            
-            // Method 2: Direct function call
             else if (typeof action === 'function') {
                 addDebugLog(`🎯 Calling ${actionName} as direct function`);
                 action();
                 addDebugLog(`✅ ${actionName} microflow executed successfully as function`);
                 return true;
             }
-            
-            // Method 3: Check if action is an object with other callable methods
             else if (action && typeof action === 'object') {
                 addDebugLog(`🔍 ${actionName} is object, checking for callable methods`);
                 
-                // Try common Mendix action patterns
                 if (typeof action.call === 'function') {
                     addDebugLog(`🎯 Calling ${actionName} via call() method`);
                     action.call();
@@ -173,7 +183,6 @@ function Imageannotator(props) {
                     return true;
                 }
                 
-                // Log available methods for debugging
                 const availableMethods = Object.getOwnPropertyNames(action).filter(prop => typeof action[prop] === 'function');
                 addDebugLog(`🔍 Available methods on ${actionName}: ${availableMethods.join(', ')}`);
             }
@@ -192,27 +201,14 @@ function Imageannotator(props) {
 
     // Widget mount/unmount logging
     useEffect(() => {
-        console.log(`🚀 [Widget ${widgetInstanceId}] ImageAnnotator initialized - NATURAL SIZE WITH SCROLL + NAVIGATION`);
+        console.log(`🚀 [Widget ${widgetInstanceId}] ImageAnnotator initialized`);
         addDebugLog("=== MICROFLOW CONFIGURATION CHECK ===");
         addDebugLog(`onAnnotationAdd configured: ${!!onAnnotationAdd}`);
         addDebugLog(`onAnnotationDelete configured: ${!!onAnnotationDelete}`);
-        
-        if (onAnnotationAdd) {
-            addDebugLog(`onAnnotationAdd type: ${typeof onAnnotationAdd}`);
-            addDebugLog(`onAnnotationAdd constructor: ${onAnnotationAdd?.constructor?.name}`);
-            addDebugLog(`onAnnotationAdd has execute: ${typeof onAnnotationAdd?.execute === 'function'}`);
-        }
-        
-        if (onAnnotationDelete) {
-            addDebugLog(`onAnnotationDelete type: ${typeof onAnnotationDelete}`);
-            addDebugLog(`onAnnotationDelete constructor: ${onAnnotationDelete?.constructor?.name}`);
-            addDebugLog(`onAnnotationDelete has execute: ${typeof onAnnotationDelete?.execute === 'function'}`);
-        }
         addDebugLog("=== END MICROFLOW CONFIGURATION CHECK ===");
         
         return () => {
             console.log(`🔥 [Widget ${widgetInstanceId}] ImageAnnotator unmounted`);
-            // Cleanup
             uploadedFiles.forEach(file => {
                 if (file.blobUrl) {
                     URL.revokeObjectURL(file.blobUrl);
@@ -235,13 +231,10 @@ function Imageannotator(props) {
             
             setImageLoaded(true);
             
-            console.log(`🖼️ [Widget ${widgetInstanceId}] Image loaded - NATURAL SIZE WITH NAVIGATION:`, {
+            console.log(`🖼️ [Widget ${widgetInstanceId}] Image loaded:`, {
                 width: naturalWidth,
                 height: naturalHeight,
-                aspectRatio: aspectRatio.toFixed(4),
-                type: aspectRatio > 1.5 ? 'wide landscape' :
-                      aspectRatio > 1.0 ? 'landscape' : 
-                      aspectRatio < 0.7 ? 'portrait' : 'square'
+                aspectRatio: aspectRatio.toFixed(4)
             });
         }
     }, [widgetInstanceId]);
@@ -249,7 +242,6 @@ function Imageannotator(props) {
     // Handle maximize/minimize toggle
     const handleMaximizeToggle = useCallback(() => {
         const newMaximizedState = !isMaximized;
-        console.log(`🔄 [Widget ${widgetInstanceId}] Toggling maximize: ${isMaximized} -> ${newMaximizedState}`);
         setIsMaximized(newMaximizedState);
     }, [isMaximized, widgetInstanceId]);
 
@@ -258,7 +250,6 @@ function Imageannotator(props) {
         const handleKeyDown = (event) => {
             if (event.key === 'Escape' && isMaximized) {
                 setIsMaximized(false);
-                console.log(`⌨️ [Widget ${widgetInstanceId}] Escape key pressed - exiting maximize mode`);
             }
         };
 
@@ -270,7 +261,7 @@ function Imageannotator(props) {
         }
     }, [isMaximized, widgetInstanceId]);
 
-    // Enhanced custom editability effect
+    // Custom editability effect
     useEffect(() => {
         let shouldShowButton = true;
         
@@ -293,36 +284,29 @@ function Imageannotator(props) {
         }
         
         setCanAddAnnotations(shouldShowButton);
-        console.log(`🔒 [Widget ${widgetInstanceId}] Annotations access updated:`, shouldShowButton);
     }, [allowAnnotations, annotationMode, readOnly, widgetInstanceId]);
 
     useEffect(() => {
-    if (showForm && richTextRef.current) {
-        // Small timeout ensures DOM is fully mounted
-        setTimeout(() => {
-            richTextRef.current.focus();
-
-            // Optional: move cursor to end (recommended)
-            const range = document.createRange();
-            const selection = window.getSelection();
-            range.selectNodeContents(richTextRef.current);
-            range.collapse(false);
-            selection.removeAllRanges();
-            selection.addRange(range);
-        }, 50);
-    }
+        if (showForm && richTextRef.current) {
+            setTimeout(() => {
+                richTextRef.current.focus();
+                const range = document.createRange();
+                const selection = window.getSelection();
+                range.selectNodeContents(richTextRef.current);
+                range.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }, 50);
+        }
     }, [showForm]);
 
-    // Enhanced AWS Signature V4 implementation
+    // AWS Signature V4 implementation
     const generateSignedUrl = useCallback(async (bucket, key, region, accessKey, secretKey) => {
         try {
-            console.log(`🔗 [Widget ${widgetInstanceId}] Generating signed URL for:`, { bucket, key: key.substring(0, 50) + '...' });
-            
             const method = 'GET';
             const service = 's3';
             const endpoint = `https://${bucket}.s3.${region}.amazonaws.com`;
             
-            // Enhanced URL encoding for S3 keys
             const encodeS3Key = (key) => {
                 let decodedKey;
                 try {
@@ -358,7 +342,6 @@ function Imageannotator(props) {
             queryParams.set('X-Amz-Date', amzDate);
             queryParams.set('X-Amz-Expires', '3600');
             queryParams.set('X-Amz-SignedHeaders', 'host');
-
             
             const canonicalQuerystring = queryParams.toString();
             const canonicalHeaders = `host:${bucket}.s3.${region}.amazonaws.com\n`;
@@ -390,8 +373,6 @@ function Imageannotator(props) {
             queryParams.set('X-Amz-Signature', signature);
             
             const finalUrl = `${endpoint}${canonicalUri}?${queryParams.toString()}`;
-            
-            console.log(`✅ [Widget ${widgetInstanceId}] Signed URL generated successfully`);
             return finalUrl;
         } catch (error) {
             console.error(`❌ [Widget ${widgetInstanceId}] Error generating signed URL:`, error);
@@ -399,7 +380,7 @@ function Imageannotator(props) {
         }
     }, [widgetInstanceId]);
 
-    // Generate image URL with enhanced error handling
+    // Generate image URL
     const generateImageUrl = useCallback(async () => {
         if (!s3BucketName?.value || !s3FileName?.value || !awsAccessKey?.value || 
             !awsSecretKey?.value || !awsRegion?.value) {
@@ -411,13 +392,11 @@ function Imageannotator(props) {
             if (!awsRegion?.value) missingParams.push('region');
             
             const errorMsg = `Missing required AWS configuration: ${missingParams.join(', ')}`;
-            console.error(`❌ [Widget ${widgetInstanceId}] ${errorMsg}`);
             setImageError(errorMsg);
             setLoadingImage(false);
             return;
         }
 
-        console.log(`📂 [Widget ${widgetInstanceId}] Loading image for file:`, s3FileName.value);
         setLoadingImage(true);
         setImageError(null);
         setImageLoaded(false);
@@ -431,26 +410,20 @@ function Imageannotator(props) {
                 awsRegion.value,
                 awsAccessKey.value,
                 awsSecretKey.value
-
             );
             
-            // Test the URL before setting it
             const testImage = new Image();
             testImage.onload = () => {
-                console.log(`[Widget ${widgetInstanceId}] Image loaded successfully`);
                 setImageUrl(signedUrl);
                 setLoadingImage(false);
             };
             testImage.onerror = (error) => {
-                console.error(`[Widget ${widgetInstanceId}] Image failed to load:`, error);
                 setImageError(`Failed to load image: Please check the file path and AWS configuration`);
                 setLoadingImage(false);
             };
             
-            // Set a timeout for the image load test
             setTimeout(() => {
                 if (!testImage.complete) {
-                    console.warn(`⚠️ [Widget ${widgetInstanceId}] Image load timeout - displaying anyway`);
                     setImageUrl(signedUrl);
                     setLoadingImage(false);
                 }
@@ -459,11 +432,10 @@ function Imageannotator(props) {
             testImage.src = signedUrl;
             
         } catch (error) {
-            console.error(`[Widget ${widgetInstanceId}] Error generating image URL:`, error);
             setImageError(`Failed to generate image URL: ${error.message}`);
             setLoadingImage(false);
         }
-    }, [s3BucketName, s3FileName, awsAccessKey, awsSecretKey, awsRegion ,generateSignedUrl, widgetInstanceId]);
+    }, [s3BucketName, s3FileName, awsAccessKey, awsSecretKey, awsRegion, generateSignedUrl, widgetInstanceId]);
 
     // Load image URL when AWS credentials change
     useEffect(() => {
@@ -492,21 +464,18 @@ function Imageannotator(props) {
                         link: doc.Link || doc.link
                     })) : [];
                     setReferenceDocList(mappedDocs);
-                    console.log(`📄 [Widget ${widgetInstanceId}] Reference documents loaded:`, mappedDocs.length);
                 } catch (parseError) {
-                    console.warn(`⚠️ [Widget ${widgetInstanceId}] Failed to parse reference documents JSON:`, parseError);
                     setReferenceDocList([]);
                 }
             } else {
                 setReferenceDocList([]);
             }
         } catch (error) {
-            console.error(` [Widget ${widgetInstanceId}] Error loading reference documents:`, error);
             setReferenceDocList([]);
         }
     }, [referenceDocuments, widgetInstanceId]);
 
-    // Load annotations from Mendix
+    // Load human annotations from Mendix
     useEffect(() => {
         try {
             let annotationsData = null;
@@ -522,76 +491,73 @@ function Imageannotator(props) {
                 try {
                     const parsed = JSON.parse(annotationsData);
                     loadedAnnotations = Array.isArray(parsed) ? parsed : [];
-                    console.log(`📋 [Widget ${widgetInstanceId}] Annotations loaded:`, loadedAnnotations.length);
                 } catch (parseError) {
-                    console.warn(`⚠️ [Widget ${widgetInstanceId}] Failed to parse annotations JSON:`, parseError);
                     loadedAnnotations = [];
                 }
             }
             
             setAnnotations(loadedAnnotations);
         } catch (error) {
-            console.error(`❌ [Widget ${widgetInstanceId}] Error loading annotations:`, error);
             setAnnotations([]);
         }
     }, [imageAnnotations, widgetInstanceId]);
 
-    // ENHANCED: Save annotations to Mendix with proper microflow execution
+    // Parse AI annotations from Mendix attribute
+    useEffect(() => {
+        try {
+            if (!isAI) {
+                setAiAnnotations([]);
+                return;
+            }
+            let data = null;
+            if (aiAnnotationsData && aiAnnotationsData.value !== undefined) {
+                data = aiAnnotationsData.value;
+            } else if (typeof aiAnnotationsData === 'string') {
+                data = aiAnnotationsData;
+            }
+            if (data && typeof data === 'string' && data.trim() !== '' && data !== '[]') {
+                const parsed = JSON.parse(data);
+                setAiAnnotations(Array.isArray(parsed) ? parsed : []);
+                console.log(`[Widget ${widgetInstanceId}] AI annotations loaded:`, Array.isArray(parsed) ? parsed.length : 0);
+            } else {
+                setAiAnnotations([]);
+            }
+        } catch (error) {
+            setAiAnnotations([]);
+            console.error(`[Widget ${widgetInstanceId}] Failed to parse AI annotations:`, error);
+        }
+    }, [aiAnnotationsData, isAI, widgetInstanceId]);
+
+    // Save annotations to Mendix
     const saveAnnotationsToMendix = useCallback((annotationsArray) => {
         addDebugLog("=== SAVING IMAGE ANNOTATIONS TO MENDIX ===");
-        addDebugLog(`Annotations to save: ${annotationsArray.length} items`);
         
         try {
             const jsonString = JSON.stringify(annotationsArray);
-            addDebugLog(`JSON string to save: ${jsonString.substring(0, 100)}...`);
-            
             let saveSuccess = false;
             
-            // Save to attribute
             if (imageAnnotations && typeof imageAnnotations.setValue === 'function') {
-                addDebugLog("📝 Attempting direct attribute update...");
                 try {
                     imageAnnotations.setValue(jsonString);
                     saveSuccess = true;
-                    addDebugLog("✅ Direct attribute update successful");
                 } catch (error) {
                     addDebugLog(`❌ Direct attribute update failed: ${error.message}`);
                 }
             } else if (imageAnnotations && imageAnnotations.value !== undefined) {
-                addDebugLog("📝 Attempting direct value assignment...");
                 try {
                     imageAnnotations.value = jsonString;
                     saveSuccess = true;
-                    addDebugLog("✅ Direct value assignment successful");
                 } catch (error) {
                     addDebugLog(`❌ Direct value assignment failed: ${error.message}`);
                 }
-            } else {
-                addDebugLog("❌ imageAnnotations not available for direct update");
             }
             
-            // ENHANCED: Execute onAnnotationAdd microflow
             if (onAnnotationAdd) {
-                addDebugLog("📞 Executing onAnnotationAdd microflow...");
-                const microflowSuccess = executeMendixAction(onAnnotationAdd, 'onAnnotationAdd');
-                if (microflowSuccess) {
-                    addDebugLog("✅ onAnnotationAdd microflow executed successfully");
-                } else {
-                    addDebugLog("❌ onAnnotationAdd microflow execution failed");
-                }
-            } else {
-                addDebugLog("ℹ️ onAnnotationAdd not configured");
-            }
-            
-            if (saveSuccess) {
-                addDebugLog("🎉 Image annotations saved successfully to Mendix");
-            } else {
-                addDebugLog("⚠️ Could not save annotations - no valid save method found");
+                executeMendixAction(onAnnotationAdd, 'onAnnotationAdd');
             }
             
         } catch (error) {
             addDebugLog(`❌ Error saving annotations: ${error.message}`);
-            console.error(`[Widget ${widgetInstanceId}] Error saving annotations:`, error);
         }
         
         addDebugLog("=== END SAVING IMAGE ANNOTATIONS ===");
@@ -607,49 +573,32 @@ function Imageannotator(props) {
         return annotation.user === currentUser;
     }, [currentUser]);
 
-    // FIXED: Get relative coordinates for natural-sized image in scroll container
+    // Get relative coordinates for natural-sized image
     const getRelativeCoordinates = useCallback((event) => {
         if (!imageRef.current || !imageLoaded) {
-            console.warn(`⚠️ [Widget ${widgetInstanceId}] Image ref not available or not loaded`);
             return null;
         }
 
         const img = imageRef.current;
         const imgRect = img.getBoundingClientRect();
-        
-        // Get the natural dimensions
         const { naturalWidth, naturalHeight } = img;
         
         if (!naturalWidth || !naturalHeight) {
-            console.warn(`⚠️ [Widget ${widgetInstanceId}] Image natural dimensions not available`);
             return null;
         }
         
-        // SIMPLE: Since image is displayed at natural size (100% zoom), 
-        // coordinate calculation is direct pixel-to-percentage conversion
         const clickX = event.clientX - imgRect.left;
         const clickY = event.clientY - imgRect.top;
         
-        // Check bounds - click must be within image
         if (clickX < 0 || clickX >= imgRect.width || clickY < 0 || clickY >= imgRect.height) {
-            console.warn(`⚠️ [Widget ${widgetInstanceId}] Click outside image bounds`);
             return null;
         }
         
-        // Convert to percentage coordinates relative to natural image size
         const xPercent = (clickX / imgRect.width) * 100;
         const yPercent = (clickY / imgRect.height) * 100;
         
-        // Clamp to valid range
         const clampedX = Math.max(0, Math.min(100, xPercent));
         const clampedY = Math.max(0, Math.min(100, yPercent));
-        
-        console.log(`🎯 [Widget ${widgetInstanceId}] Natural size coordinates calculated:`, {
-            x: clampedX.toFixed(2),
-            y: clampedY.toFixed(2),
-            imageSize: { width: imgRect.width, height: imgRect.height },
-            naturalSize: { width: naturalWidth, height: naturalHeight }
-        });
         
         return { 
             x: Number(clampedX.toFixed(2)), 
@@ -657,80 +606,62 @@ function Imageannotator(props) {
         };
     }, [widgetInstanceId, imageLoaded]);
 
-    // NEW: Function to scroll to annotation position when clicked in sidebar
+    // Scroll to annotation position — fixed to handle AI annotations (area only, no type/position)
     const scrollToAnnotation = useCallback((annotation) => {
         if (!scrollContainerRef.current || !imageRef.current || !imageLoaded) {
-            console.warn(`⚠️ [Widget ${widgetInstanceId}] Cannot scroll - refs not available`);
             return;
         }
 
         const scrollContainer = scrollContainerRef.current;
         const img = imageRef.current;
-        
-        // Get image dimensions
         const { naturalWidth, naturalHeight } = img;
         
         if (!naturalWidth || !naturalHeight) {
-            console.warn(`⚠️ [Widget ${widgetInstanceId}] Image dimensions not available for scrolling`);
             return;
         }
 
         let targetXPercent, targetYPercent;
         
-        if (annotation.type === 'area') {
-            // For area annotations, scroll to center of the area
+        if (annotation.type === 'area' || annotation.area) {
             targetXPercent = annotation.area.x + annotation.area.width / 2;
             targetYPercent = annotation.area.y + annotation.area.height / 2;
-        } else {
-            // For point annotations, scroll to the point
+        } else if (annotation.position) {
             targetXPercent = annotation.position.x;
             targetYPercent = annotation.position.y;
+        } else {
+            console.warn(`⚠️ [Widget ${widgetInstanceId}] No position data, skipping scroll`);
+            return;
         }
         
-        // Calculate absolute pixel position within the image
         const targetXPixels = (targetXPercent / 100) * naturalWidth;
         const targetYPixels = (targetYPercent / 100) * naturalHeight;
         
-        // Account for the 20px margin around the image (from CSS .image-container-inner margin: 20px)
         const imageMargin = 20;
         const adjustedTargetX = targetXPixels + imageMargin;
         const adjustedTargetY = targetYPixels + imageMargin;
         
-        // Get container dimensions
         const containerWidth = scrollContainer.clientWidth;
         const containerHeight = scrollContainer.clientHeight;
         
-        // Calculate scroll position to center the annotation in the view
         const scrollLeft = adjustedTargetX - (containerWidth / 2);
         const scrollTop = adjustedTargetY - (containerHeight / 2);
         
-        // Get the scrollable area bounds (including margins)
         const totalWidth = naturalWidth + (imageMargin * 2);
         const totalHeight = naturalHeight + (imageMargin * 2);
         
-        // Ensure scroll position is within bounds
         const maxScrollLeft = Math.max(0, totalWidth - containerWidth);
         const maxScrollTop = Math.max(0, totalHeight - containerHeight);
         
         const finalScrollLeft = Math.max(0, Math.min(scrollLeft, maxScrollLeft));
         const finalScrollTop = Math.max(0, Math.min(scrollTop, maxScrollTop));
         
-        // Smooth scroll to position
         scrollContainer.scrollTo({
             left: finalScrollLeft,
             top: finalScrollTop,
             behavior: 'smooth'
         });
         
-        console.log(`🎯 [Widget ${widgetInstanceId}] Scrolled to annotation ${annotation.id}:`, {
-            annotationType: annotation.type,
-            targetPercent: { x: targetXPercent.toFixed(2), y: targetYPercent.toFixed(2) },
-            targetPixels: { x: targetXPixels.toFixed(2), y: targetYPixels.toFixed(2) },
-            adjustedTarget: { x: adjustedTargetX.toFixed(2), y: adjustedTargetY.toFixed(2) },
-            scrollTo: { left: finalScrollLeft.toFixed(2), top: finalScrollTop.toFixed(2) },
-            imageDimensions: { width: naturalWidth, height: naturalHeight },
-            containerDimensions: { width: containerWidth, height: containerHeight }
-        });
+        console.log(`🎯 [Widget ${widgetInstanceId}] Scrolled to annotation ${annotation.id}`);
     }, [widgetInstanceId, imageLoaded]);
 
     // Image click handler
@@ -741,12 +672,7 @@ function Imageannotator(props) {
         event.stopPropagation();
         
         const coords = getRelativeCoordinates(event);
-        if (!coords) {
-            console.warn(`⚠️ [Widget ${widgetInstanceId}] Invalid coordinates for point annotation`);
-            return;
-        }
-        
-        console.log(`🎯 [Widget ${widgetInstanceId}] Point annotation placed at natural size coordinates:`, coords);
+        if (!coords) return;
         
         setSelectedPosition(coords);
         setShowForm(true);
@@ -761,10 +687,7 @@ function Imageannotator(props) {
         event.stopPropagation();
         
         const coords = getRelativeCoordinates(event);
-        if (!coords) {
-            console.warn(`⚠️ [Widget ${widgetInstanceId}] Invalid coordinates for area selection start`);
-            return;
-        }
+        if (!coords) return;
         
         setStartPoint(coords);
         setIsDrawing(true);
@@ -774,8 +697,6 @@ function Imageannotator(props) {
             width: 0,
             height: 0
         });
-        
-        console.log(`🎯 [Widget ${widgetInstanceId}] Area selection started at natural size coordinates:`, coords);
     }, [isAnnotationMode, annotationType, canAddAnnotations, getRelativeCoordinates, widgetInstanceId]);
 
     const handleMouseMove = useCallback((event) => {
@@ -803,14 +724,11 @@ function Imageannotator(props) {
         event.preventDefault();
         setIsDrawing(false);
         
-        const minAreaSize = 1.0; // Minimum 1% of image dimension
+        const minAreaSize = 1.0;
         if (currentArea.width > minAreaSize && currentArea.height > minAreaSize) {
-            console.log(`✅ [Widget ${widgetInstanceId}] Area selected with natural size coordinates:`, currentArea);
             setSelectedArea(currentArea);
             setShowForm(true);
             setIsAnnotationMode(false);
-        } else {
-            console.log(`⚠️ [Widget ${widgetInstanceId}] Area too small, ignoring selection`);
         }
         
         setStartPoint(null);
@@ -820,7 +738,6 @@ function Imageannotator(props) {
     // Handle dropdown selections
     const handleSelectPoint = useCallback(() => {
         if (!canAddAnnotations) return;
-        console.log(`🎯 [Widget ${widgetInstanceId}] Point annotation mode activated`);
         setAnnotationType('point');
         setIsAnnotationMode(true);
         setShowAnnotationDropdown(false);
@@ -828,7 +745,6 @@ function Imageannotator(props) {
 
     const handleSelectArea = useCallback(() => {
         if (!canAddAnnotations) return;
-        console.log(`🎯 [Widget ${widgetInstanceId}] Area annotation mode activated`);
         setAnnotationType('area');
         setIsAnnotationMode(true);
         setShowAnnotationDropdown(false);
@@ -845,7 +761,6 @@ function Imageannotator(props) {
                 height: `${annotation.area.height}%`,
             };
         } else {
-            // Point annotation
             return {
                 position: 'absolute',
                 left: `${annotation.position.x}%`,
@@ -867,7 +782,6 @@ function Imageannotator(props) {
     }, []);
 
     const handleReferenceDocSelect = useCallback((doc) => {
-        console.log(`📄 [Widget ${widgetInstanceId}] Reference document selected:`, doc.name);
         setSelectedReferenceDoc(String(doc.id));
         setSelectedReferenceDocName(doc.name);
         setReferenceSearchTerm(doc.name);
@@ -875,7 +789,6 @@ function Imageannotator(props) {
     }, [widgetInstanceId]);
 
     const clearReferenceSelection = useCallback(() => {
-        console.log(`📄 [Widget ${widgetInstanceId}] Reference document selection cleared`);
         setSelectedReferenceDoc('');
         setSelectedReferenceDocName('');
         setReferenceSearchTerm('');
@@ -900,8 +813,6 @@ function Imageannotator(props) {
     // File upload handler
     const uploadFileLocally = useCallback(async (file) => {
         try {
-            console.log(`📎 [Widget ${widgetInstanceId}] Processing file:`, file.name);
-            
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => {
@@ -920,21 +831,17 @@ function Imageannotator(props) {
                             widgetInstanceId: widgetInstanceId
                         };
                         
-                        console.log(`✅ [Widget ${widgetInstanceId}] File processed successfully:`, file.name);
                         resolve(processedFile);
                     } catch (error) {
-                        console.error(`❌ [Widget ${widgetInstanceId}] Error processing file data:`, error);
                         reject(error);
                     }
                 };
                 reader.onerror = () => {
-                    console.error(`❌ [Widget ${widgetInstanceId}] FileReader error:`, reader.error);
                     reject(reader.error);
                 };
                 reader.readAsDataURL(file);
             });
         } catch (error) {
-            console.error(`❌ [Widget ${widgetInstanceId}] Failed to process file:`, file.name, error);
             throw new Error(`Failed to process file: ${file.name}`);
         }
     }, [widgetInstanceId]);
@@ -944,8 +851,6 @@ function Imageannotator(props) {
         event.stopPropagation();
         
         const files = Array.from(event.target.files);
-        console.log(`📎 [Widget ${widgetInstanceId}] File upload initiated:`, files.length, 'files');
-        
         if (files.length === 0) return;
         
         setIsUploading(true);
@@ -964,7 +869,6 @@ function Imageannotator(props) {
             
             if (uploadedFileData.length > 0) {
                 setUploadedFiles(prev => [...prev, ...uploadedFileData]);
-                console.log(`✅ [Widget ${widgetInstanceId}] Successfully uploaded ${uploadedFileData.length} files`);
             }
         } catch (error) {
             console.error(`❌ [Widget ${widgetInstanceId}] Error processing files:`, error);
@@ -978,24 +882,17 @@ function Imageannotator(props) {
 
     // File input trigger
     const triggerFileInput = useCallback(() => {
-        console.log(`📎 [Widget ${widgetInstanceId}] Triggering file input`);
-        
         if (fileInputRef.current) {
             fileInputRef.current.click();
-            return;
         }
-        
-        console.error(`❌ [Widget ${widgetInstanceId}] File input ref not available!`);
     }, [widgetInstanceId]);
 
     const removeFile = useCallback((fileId) => {
-        console.log(`🗑️ [Widget ${widgetInstanceId}] Removing file:`, fileId);
         setUploadedFiles(prev => prev.filter(file => file.id !== fileId));
     }, [widgetInstanceId]);
 
     // Preview file
     const handlePreviewFile = useCallback(async (file) => {
-        console.log(`👁️ [Widget ${widgetInstanceId}] Previewing file:`, file.name);
         setLoadingPreview(true);
         setPreviewFile(file);
         setShowFilePreview(true);
@@ -1030,7 +927,6 @@ function Imageannotator(props) {
         }
         setPreviewFile(null);
         setShowFilePreview(false);
-        console.log(`👁️ [Widget ${widgetInstanceId}] File preview closed`);
     }, [previewFile, widgetInstanceId]);
 
     // Check if form has content
@@ -1040,7 +936,7 @@ function Imageannotator(props) {
         return richTextPlainText.length > 0 || fallbackComment.length > 0;
     }, [comment]);
 
-    // Handle form submit - exits annotation mode after saving
+    // Handle form submit
     const handleSubmit = useCallback((event) => {
         event.preventDefault();
         
@@ -1056,13 +952,6 @@ function Imageannotator(props) {
             alert('Please enter a comment before adding the annotation.');
             return;
         }
-
-        console.log(`💾 [Widget ${widgetInstanceId}] Submitting annotation with natural size coordinates:`, { 
-            type: editingAnnotation ? 'edit' : 'new', 
-            comment: finalComment.substring(0, 50) + '...',
-            position: selectedPosition,
-            area: selectedArea
-        });
         
         setIsSubmitting(true);
         
@@ -1081,7 +970,6 @@ function Imageannotator(props) {
                     }
                     : ann
             );
-            console.log(`✏️ [Widget ${widgetInstanceId}] Annotation edited:`, editingAnnotation.id);
         } else {
             const newAnnotation = {
                 id: `${widgetInstanceId}-${Date.now()}-${Math.random()}`,
@@ -1094,6 +982,8 @@ function Imageannotator(props) {
                 uploadedFiles: uploadedFiles,
                 color: ANNOTATION_COLOR,
                 user: currentUser,
+                role: currentUserRole,
+                authorId: currentAuthorId,
                 createdAt: new Date().toISOString(),
                 widgetInstanceId: widgetInstanceId,
                 fileInfo: {
@@ -1101,7 +991,6 @@ function Imageannotator(props) {
                     fileName: s3FileName?.value,
                     region: awsRegion?.value
                 },
-                // FIXED positioning metadata for natural-sized images
                 createdInMaximizedView: isMaximized,
                 positioningVersion: 'v12-natural-size-with-scroll-navigation',
                 imageDimensions: imageDimensions,
@@ -1109,12 +998,10 @@ function Imageannotator(props) {
             };
 
             updatedAnnotations = [...annotations, newAnnotation];
-            console.log(`➕ [Widget ${widgetInstanceId}] New annotation created with natural size coordinates:`, newAnnotation.id);
         }
 
         saveAnnotations(updatedAnnotations);
         
-        // Reset form and exit annotation mode
         setComment('');
         setSelectedReferenceDoc('');
         setSelectedReferenceDocName('');
@@ -1130,14 +1017,10 @@ function Imageannotator(props) {
         if (richTextRef.current) {
             richTextRef.current.innerHTML = '';
         }
-        
-        console.log(`✅ [Widget ${widgetInstanceId}] Form reset and annotation mode exited`);
     }, [comment, selectedReferenceDoc, uploadedFiles, isSubmitting, selectedPosition, selectedArea, annotations, saveAnnotations, currentUser, s3BucketName, s3FileName, awsRegion, editingAnnotation, canAddAnnotations, annotationType, richTextContent, isMaximized, imageDimensions, widgetInstanceId]);
 
-    // Handle form cancel - exits annotation mode
+    // Handle form cancel
     const handleCancel = useCallback(() => {
-        console.log(`❌ [Widget ${widgetInstanceId}] Form cancelled`);
-        
         setComment('');
         setSelectedReferenceDoc('');
         setSelectedReferenceDocName('');
@@ -1223,16 +1106,12 @@ function Imageannotator(props) {
     // Handle marker click
     const handleMarkerClick = useCallback((annotation, event) => {
         event.stopPropagation();
-        console.log(`🎯 [Widget ${widgetInstanceId}] Annotation clicked on image:`, annotation.id);
         setActiveAnnotationId(annotation.id);
     }, [widgetInstanceId]);
 
-    // UPDATED: Handle annotation list click - now includes scroll-to functionality
+    // Handle annotation list click — scroll to annotation
     const handleListClick = useCallback((annotation) => {
-        console.log(`📋 [Widget ${widgetInstanceId}] Annotation selected from list:`, annotation.id);
         setActiveAnnotationId(annotation.id);
-        
-        // NEW: Scroll to annotation position with a small delay to ensure state update
         setTimeout(() => {
             scrollToAnnotation(annotation);
         }, 100);
@@ -1243,7 +1122,6 @@ function Imageannotator(props) {
         if (!canAddAnnotations || !canEditAnnotation(annotation)) return;
         
         event.stopPropagation();
-        console.log(`✏️ [Widget ${widgetInstanceId}] Editing annotation:`, annotation.id);
         
         setEditingAnnotation(annotation);
         setComment(annotation.comment);
@@ -1269,7 +1147,7 @@ function Imageannotator(props) {
         setShowForm(true);
     }, [canAddAnnotations, canEditAnnotation, referenceDocList, widgetInstanceId]);
 
-    // ENHANCED: Handle delete with proper microflow execution
+    // Handle delete
     const handleDelete = useCallback((annotationId, event) => {
         if (!canAddAnnotations) return;
         
@@ -1281,47 +1159,29 @@ function Imageannotator(props) {
             return;
         }
         
-        console.log(`🗑️ [Widget ${widgetInstanceId}] Deleting annotation:`, annotationId);
-        
         if (window.confirm('Are you sure you want to delete this annotation?')) {
             addDebugLog("=== DELETING IMAGE ANNOTATION ===");
-            addDebugLog(`Deleting annotation ID: ${annotationId}`);
             
             const updated = annotations.filter(ann => ann.id !== annotationId);
             
-            // First update the UI
             setAnnotations(updated);
             
-            // Save to Mendix attribute
             try {
                 const jsonString = JSON.stringify(updated);
                 
                 if (imageAnnotations && typeof imageAnnotations.setValue === 'function') {
-                    addDebugLog("📝 Updating annotations attribute after delete...");
                     imageAnnotations.setValue(jsonString);
-                    addDebugLog("✅ Annotations attribute updated successfully");
                 } else if (imageAnnotations && imageAnnotations.value !== undefined) {
                     imageAnnotations.value = jsonString;
-                    addDebugLog("✅ Annotations value updated directly");
                 }
             } catch (error) {
                 addDebugLog(`❌ Error updating annotations after delete: ${error.message}`);
             }
             
-            // ENHANCED: Execute onAnnotationDelete microflow
             if (onAnnotationDelete) {
-                addDebugLog("📞 Executing onAnnotationDelete microflow...");
-                const microflowSuccess = executeMendixAction(onAnnotationDelete, 'onAnnotationDelete');
-                if (microflowSuccess) {
-                    addDebugLog("✅ onAnnotationDelete microflow executed successfully");
-                } else {
-                    addDebugLog("❌ onAnnotationDelete microflow execution failed");
-                }
-            } else {
-                addDebugLog("ℹ️ onAnnotationDelete not configured");
+                executeMendixAction(onAnnotationDelete, 'onAnnotationDelete');
             }
             
-            // Clean up UI state
             if (activeAnnotationId === annotationId) {
                 setActiveAnnotationId(null);
             }
@@ -1332,10 +1192,7 @@ function Imageannotator(props) {
                 return newSet;
             });
             
-            addDebugLog("✅ Annotation deleted successfully");
             addDebugLog("=== END DELETING IMAGE ANNOTATION ===");
-            
-            console.log(`✅ [Widget ${widgetInstanceId}] Annotation deleted successfully`);
         }
     }, [annotations, imageAnnotations, onAnnotationDelete, activeAnnotationId, canAddAnnotations, canEditAnnotation, addDebugLog, executeMendixAction, widgetInstanceId]);
 
@@ -1368,7 +1225,6 @@ function Imageannotator(props) {
         return index + 1;
     }, [getSortedAnnotations]);
 
-    // Filtered reference documents based on search term
     const filteredReferenceDocuments = useCallback(() => {
         if (!referenceSearchTerm.trim()) {
             return referenceDocList;
@@ -1386,7 +1242,7 @@ function Imageannotator(props) {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }, []);
 
-    // Enhanced loading spinner render function
+    // Loading spinner
     const renderLoadingSpinner = () => {
         return createElement('div', {
             className: 'image-loading-container',
@@ -1439,7 +1295,7 @@ function Imageannotator(props) {
                         color: '#4F46E5',
                         letterSpacing: '0.5px'
                     }
-                }, 'Loading image - SCROLL & NAVIGATE TO ANNOTATIONS'),
+                }, 'Loading image...'),
                 createElement('p', {
                     key: 'loading-subtext',
                     style: {
@@ -1453,7 +1309,7 @@ function Imageannotator(props) {
         ]);
     };
 
-    // Handle different loading/error states
+    // Error state
     if (imageError) {
         return createElement('div', {
             className: `mx-imageannotator mx-imageannotator-error ${className} ${isMaximized ? 'img-maximized' : ''}`.trim(),
@@ -1468,24 +1324,14 @@ function Imageannotator(props) {
                 key: 'error-content',
                 className: 'error-content'
             }, [
-                createElement('div', {
-                    key: 'icon',
-                    className: 'error-icon'
-                }, '⚠️'),
-                createElement('p', {
-                    key: 'message',
-                    className: 'error-message'
-                }, imageError),
-                createElement('button', {
-                    key: 'retry',
-                    className: 'retry-button',
-                    onClick: generateImageUrl
-                }, 'Retry')
+                createElement('div', { key: 'icon', className: 'error-icon' }, '⚠️'),
+                createElement('p', { key: 'message', className: 'error-message' }, imageError),
+                createElement('button', { key: 'retry', className: 'retry-button', onClick: generateImageUrl }, 'Retry')
             ])
         ]);
     }
 
-    // Show spinner while loading
+    // Loading state
     if (loadingImage || !imageUrl) {
         return createElement('div', {
             className: `mx-imageannotator ${className} ${isMaximized ? 'img-maximized' : ''}`.trim(),
@@ -1499,7 +1345,9 @@ function Imageannotator(props) {
         }, renderLoadingSpinner());
     }
 
-    // MAIN RENDER - NATURAL SIZE WITH SCROLL + NAVIGATION SYSTEM
+    // ─────────────────────────────────────────────────────────────
+    // MAIN RENDER
+    // ─────────────────────────────────────────────────────────────
     return createElement('div', {
         className: `mx-imageannotator ${className} ${isMaximized ? 'img-maximized' : ''}`.trim(),
         style,
@@ -1510,17 +1358,16 @@ function Imageannotator(props) {
         'data-widget-instance': widgetInstanceId,
         ref: containerRef
     }, [
-        // Main content
         createElement('div', {
             key: 'main-content',
             className: 'main-content'
         }, [
-            // Image area with header
+            // ── IMAGE AREA ──────────────────────────────────────
             createElement('div', {
                 key: 'image-area',
                 className: 'image-area'
             }, [
-                // Header WITHOUT zoom controls
+                // Header bar
                 createElement('div', {
                     key: 'image-header-bar',
                     className: 'image-header-bar'
@@ -1541,7 +1388,6 @@ function Imageannotator(props) {
                         key: 'header-right',
                         className: 'header-right'
                     }, [
-                        // Annotation controls
                         canAddAnnotations ? createElement('div', {
                             key: 'add-dropdown-container',
                             className: 'add-dropdown-container'
@@ -1552,13 +1398,11 @@ function Imageannotator(props) {
                                 onClick: (e) => {
                                     e.stopPropagation();
                                     if (isAnnotationMode) {
-                                        console.log(`❌ [Widget ${widgetInstanceId}] Annotation mode cancelled`);
                                         setIsAnnotationMode(false);
                                         setIsDrawing(false);
                                         setStartPoint(null);
                                         setCurrentArea(null);
                                     } else {
-                                        console.log(`🎯 [Widget ${widgetInstanceId}] Annotation dropdown toggled`);
                                         setShowAnnotationDropdown(!showAnnotationDropdown);
                                     }
                                 }
@@ -1568,7 +1412,6 @@ function Imageannotator(props) {
                                 !isAnnotationMode && createElement('span', { key: 'chevron' }, '▼')
                             ].filter(Boolean)),
                             
-                            // Dropdown menu
                             showAnnotationDropdown && createElement('div', {
                                 key: 'annotation-dropdown',
                                 className: 'annotation-dropdown-menu',
@@ -1596,13 +1439,12 @@ function Imageannotator(props) {
                     ].filter(Boolean))
                 ]),
                 
-                // FIXED: Restore scroll container for proper image navigation at natural size
+                // Image scroll container
                 createElement('div', {
                     key: 'image-container',
                     ref: imageContainerRef,
                     className: 'image-container white-bg'
                 }, [
-                    // RESTORED: Scroll container that enables panning around full-size image + navigation to annotations
                     createElement('div', {
                         key: 'zoom-scroll-container',
                         ref: scrollContainerRef,
@@ -1611,19 +1453,17 @@ function Imageannotator(props) {
                             width: '100%',
                             height: '100%',
                             position: 'relative',
-                            overflow: 'auto', // Allow scrolling for large images
+                            overflow: 'auto',
                             display: 'flex',
-                            alignItems: 'flex-start', // Start from top
-                            justifyContent: 'flex-start' // Start from left
+                            alignItems: 'flex-start',
+                            justifyContent: 'flex-start'
                         }
                     }, [
-                        // FIXED: Image container that maintains natural size
                         createElement('div', {
                             key: 'image-container-inner',
                             className: 'image-container-inner',
                             style: {
                                 position: 'relative',
-                                // Display image at natural size (like 100% zoom)
                                 width: imageDimensions.width ? `${imageDimensions.width}px` : 'auto',
                                 height: imageDimensions.height ? `${imageDimensions.height}px` : 'auto',
                                 minWidth: imageDimensions.width ? `${imageDimensions.width}px` : '100%',
@@ -1631,7 +1471,7 @@ function Imageannotator(props) {
                                 flexShrink: 0
                             }
                         }, [
-                            // FIXED: Image displays at natural size with proper scrolling
+                            // Main image
                             createElement('img', {
                                 key: 'main-image',
                                 ref: imageRef,
@@ -1645,21 +1485,19 @@ function Imageannotator(props) {
                                 onLoad: handleImageLoad,
                                 draggable: false,
                                 style: {
-                                    // Display at natural size (like 100% zoom)
                                     width: imageDimensions.width ? `${imageDimensions.width}px` : 'auto',
                                     height: imageDimensions.height ? `${imageDimensions.height}px` : 'auto',
                                     display: 'block',
                                     cursor: isAnnotationMode ? 'crosshair' : 'default',
                                     userSelect: 'none',
                                     pointerEvents: 'auto',
-                                    // Remove object-fit to allow natural sizing
                                     objectFit: 'none',
                                     margin: 0,
                                     padding: 0
                                 }
                             }),
                             
-                            // Current area being drawn
+                            // Drawing area (while dragging)
                             currentArea && createElement('div', {
                                 key: 'current-area',
                                 className: 'drawing-area',
@@ -1676,7 +1514,7 @@ function Imageannotator(props) {
                                 }
                             }),
                             
-                            // FIXED: Annotations with percentage positioning on natural-sized image
+                            // ── Human annotation markers ────────────────────
                             ...getSortedAnnotations().map((annotation) => {
                                 const isActive = activeAnnotationId === annotation.id;
                                 const annotationNumber = getAnnotationNumber(annotation.id);
@@ -1738,17 +1576,58 @@ function Imageannotator(props) {
                                         title: annotation.comment
                                     }, annotationNumber.toString());
                                 }
-                            })
+                            }),
+
+                            // ── AI annotation bounding boxes ─────────────────
+                            // Only rendered when isAI = true
+                            ...(isAI ? aiAnnotations.map((annotation) => {
+                                const isActive = activeAnnotationId === annotation.id;
+                                return createElement('div', {
+                                    key: `ai-${annotation.id}`,
+                                    className: `annotation-area ${isActive ? 'active' : ''}`,
+                                    style: {
+                                        position: 'absolute',
+                                        left: `${annotation.area.x}%`,
+                                        top: `${annotation.area.y}%`,
+                                        width: `${annotation.area.width}%`,
+                                        height: `${annotation.area.height}%`,
+                                        border: `2px solid ${AI_ANNOTATION_COLOR}`,
+                                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                                        cursor: 'pointer',
+                                        zIndex: 5,
+                                        boxShadow: isActive ? `0 0 0 2px ${AI_ANNOTATION_COLOR}` : 'none'
+                                    },
+                                    onClick: (e) => handleMarkerClick(annotation, e),
+                                    title: annotation.comment
+                                }, [
+                                    createElement('div', {
+                                        key: 'ai-label',
+                                        style: {
+                                            position: 'absolute',
+                                            top: '-22px',
+                                            left: '0',
+                                            backgroundColor: AI_ANNOTATION_COLOR,
+                                            color: 'white',
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '10px',
+                                            fontWeight: '600',
+                                            whiteSpace: 'nowrap'
+                                        }
+                                    }, 'AI')
+                                ]);
+                            }) : [])
                         ])
                     ])
                 ])
             ]),
             
-            // Enhanced annotations sidebar with navigation functionality
+            // ── SIDEBAR ─────────────────────────────────────────
             createElement('div', {
                 key: 'annotations-sidebar',
                 className: 'annotations-sidebar'
             }, [
+                // Sidebar header — always same structure so Mendix CSS ::before keeps working
                 createElement('div', {
                     key: 'sidebar-header',
                     className: 'sidebar-header'
@@ -1760,189 +1639,314 @@ function Imageannotator(props) {
                     createElement('div', {
                         key: 'annotation-count',
                         className: 'annotation-count-badge'
-                    }, annotations.length.toString())
+                    }, (isAI && activeTab === 'ai'
+                        ? aiAnnotations.length
+                        : annotations.length
+                    ).toString())
                 ]),
-                
+
+                // AI tab bar — only rendered when isAI = true
+                // Sits between sidebar-header and annotations-list
+                isAI ? createElement('div', {
+                    key: 'ai-tab-bar',
+                    className: 'ai-tab-bar'
+                }, [
+                    createElement('button', {
+                        key: 'human-tab',
+                        className: `ai-tab-btn${activeTab === 'human' ? ' ai-tab-btn--active' : ''}`,
+                        onClick: () => setActiveTab('human')
+                    }, 'Annotations'),
+                    createElement('button', {
+                        key: 'ai-tab',
+                        className: `ai-tab-btn${activeTab === 'ai' ? ' ai-tab-btn--active ai-tab-btn--ai' : ''}`,
+                        onClick: () => setActiveTab('ai')
+                    }, 'AI Annotations')
+                ]) : null,
+
+                // Annotations list — shows human or AI content based on activeTab
                 createElement('div', {
                     key: 'annotations-list',
                     className: 'annotations-list'
-                }, annotations.length > 0 ? 
-                    getSortedAnnotations().map((annotation) => {
-                        const isActive = activeAnnotationId === annotation.id;
-                        const annotationNumber = getAnnotationNumber(annotation.id);
-                        const isExpanded = expandedAnnotations.has(annotation.id);
-                        
-                        return createElement('div', {
-                            key: annotation.id,
-                            className: `annotation-item ${isActive ? 'selected' : ''}`,
-                            onClick: () => handleListClick(annotation),
-                            title: 'Click to navigate to annotation position',
-                            style: {
-                                cursor: 'pointer'
-                            }
-                        }, [
-                            // Header
-                            createElement('div', {
-                                key: 'annotation-header',
-                                className: 'annotation-item-header'
+                },
+                    // ── Human tab content ────────────────────────
+                    activeTab === 'human' ? (
+                        annotations.length > 0 ?
+                        getSortedAnnotations().map((annotation) => {
+                            const isActive = activeAnnotationId === annotation.id;
+                            const annotationNumber = getAnnotationNumber(annotation.id);
+                            const isExpanded = expandedAnnotations.has(annotation.id);
+                            
+                            return createElement('div', {
+                                key: annotation.id,
+                                className: `annotation-item ${isActive ? 'selected' : ''}`,
+                                onClick: () => handleListClick(annotation),
+                                title: 'Click to navigate to annotation position',
+                                style: { cursor: 'pointer' }
                             }, [
+                                // Header
                                 createElement('div', {
-                                    key: 'title-section',
-                                    className: 'title-section'
+                                    key: 'annotation-header',
+                                    className: 'annotation-item-header'
                                 }, [
-                                    createElement('span', {
-                                        key: 'annotation-number',
-                                        className: 'annotation-number'
-                                    }, annotationNumber),
-                                    createElement('span', {
-                                        key: 'annotation-type',
-                                        className: 'annotation-type'
-                                    }, annotation.type === 'area' ? '🟧' : '📍'),
-                                    // NEW: Navigation hint
-                                    createElement('span', {
-                                        key: 'navigation-hint',
-                                        className: 'navigation-hint',
-                                        style: {
-                                            fontSize: '10px',
-                                            color: '#6b7280',
-                                            marginLeft: '4px'
+                                    createElement('div', {
+                                        key: 'title-section',
+                                        className: 'title-section'
+                                    }, [
+                                        createElement('span', {
+                                            key: 'annotation-number',
+                                            className: 'annotation-number'
+                                        }, annotationNumber),
+                                        createElement('span', {
+                                            key: 'annotation-type',
+                                            className: 'annotation-type'
+                                        }, annotation.type === 'area' ? '🟧' : '📍'),
+                                        annotation.role && createElement('span', {
+                                        key: 'role-badge',
+                                        style:{
+                                                backgroundColor:'#eff6ff',
+                                                color:'#1d4ed8',
+                                                padding: '2px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '11px',
+                                                fontWeight: '600'
                                         }
-                                    }, '🧭')
+                                        }, annotation.role),
+                                        createElement('span', {
+                                            key: 'navigation-hint',
+                                            className: 'navigation-hint',
+                                            style: { fontSize: '10px', color: '#6b7280', marginLeft: '4px' }
+                                        }, '🧭')
+                                    ]),
+                                    
+                                    (canAddAnnotations && canEditAnnotation(annotation)) ? createElement('div', {
+                                        key: 'action-buttons',
+                                        className: 'action-buttons'
+                                    }, [
+                                        createElement('button', {
+                                            key: 'edit-btn',
+                                            className: 'action-btn edit-btn',
+                                            onClick: (e) => handleEditAnnotation(annotation, e),
+                                            title: 'Edit annotation'
+                                        }, '✏'),
+                                        createElement('button', {
+                                            key: 'delete-btn',
+                                            className: 'action-btn delete-btn',
+                                            onClick: (e) => handleDelete(annotation.id, e),
+                                            title: 'Delete annotation'
+                                        }, '🗑')
+                                    ]) : null
                                 ]),
                                 
-                                (canAddAnnotations && canEditAnnotation(annotation)) ? createElement('div', {
-                                    key: 'action-buttons',
-                                    className: 'action-buttons'
+                                // Content
+                                createElement('div', {
+                                    key: 'annotation-content',
+                                    className: 'annotation-content'
                                 }, [
-                                    createElement('button', {
-                                        key: 'edit-btn',
-                                        className: 'action-btn edit-btn',
-                                        onClick: (e) => handleEditAnnotation(annotation, e),
-                                        title: 'Edit annotation'
-                                    }, '✏'),
-                                    createElement('button', {
-                                        key: 'delete-btn',
-                                        className: 'action-btn delete-btn',
-                                        onClick: (e) => handleDelete(annotation.id, e),
-                                        title: 'Delete annotation'
-                                    }, '🗑')
-                                ]) : null
-                            ]),
-                            
-                            // Content
-                            createElement('div', {
-                                key: 'annotation-content',
-                                className: 'annotation-content'
-                            }, [
-                                // Comment text
-                                annotation.richTextContent ? 
-                                    createElement('div', {
-                                        key: 'rich-text',
-                                        className: 'annotation-rich-content',
-                                        dangerouslySetInnerHTML: { 
-                                            __html: isExpanded ? 
-                                                annotation.richTextContent : 
-                                                getTruncatedText(annotation)
-                                        }
-                                    }) : 
-                                    createElement('p', {
-                                        key: 'plain-text',
-                                        className: 'annotation-text'
-                                    }, isExpanded ? 
-                                        annotation.comment : 
-                                        getTruncatedText(annotation)),
-                                
-                                // Read more/less button
-                                createElement('button', {
-                                    key: 'read-more-btn',
-                                    className: 'read-more-btn',
-                                    onClick: (e) => {
-                                        e.stopPropagation();
-                                        toggleAnnotationExpansion(annotation.id);
-                                    }
-                                }, isExpanded ? 'Read Less' : 'Read More'),
-                                
-                                // Files and reference documents - ONLY show when expanded
-                                isExpanded && [
-                                    // Files
-                                    annotation.uploadedFiles && annotation.uploadedFiles.length > 0 && 
-                                    createElement('div', {
-                                        key: 'files',
-                                        className: 'annotation-files'
-                                    }, [
+                                    annotation.richTextContent ? 
                                         createElement('div', {
-                                            key: 'files-title',
-                                            className: 'annotation-files-title'
-                                        }, 'Files:'),
-                                        ...annotation.uploadedFiles.map(file => 
+                                            key: 'rich-text',
+                                            className: 'annotation-rich-content',
+                                            dangerouslySetInnerHTML: { 
+                                                __html: isExpanded ? 
+                                                    annotation.richTextContent : 
+                                                    getTruncatedText(annotation)
+                                            }
+                                        }) : 
+                                        createElement('p', {
+                                            key: 'plain-text',
+                                            className: 'annotation-text'
+                                        }, isExpanded ? 
+                                            annotation.comment : 
+                                            getTruncatedText(annotation)),
+                                    
+                                    createElement('button', {
+                                        key: 'read-more-btn',
+                                        className: 'read-more-btn',
+                                        onClick: (e) => {
+                                            e.stopPropagation();
+                                            toggleAnnotationExpansion(annotation.id);
+                                        }
+                                    }, isExpanded ? 'Read Less' : 'Read More'),
+                                    
+                                    isExpanded && [
+                                        annotation.uploadedFiles && annotation.uploadedFiles.length > 0 && 
+                                        createElement('div', {
+                                            key: 'files',
+                                            className: 'annotation-files'
+                                        }, [
                                             createElement('div', {
-                                                key: file.id,
-                                                className: 'annotation-file-item clickable-file',
+                                                key: 'files-title',
+                                                className: 'annotation-files-title'
+                                            }, 'Files:'),
+                                            ...annotation.uploadedFiles.map(file => 
+                                                createElement('div', {
+                                                    key: file.id,
+                                                    className: 'annotation-file-item clickable-file',
+                                                    onClick: (e) => {
+                                                        e.stopPropagation();
+                                                        handlePreviewFile(file);
+                                                    },
+                                                    title: 'Click to preview file'
+                                                }, `📄 ${file.name}`)
+                                            )
+                                        ]),
+                                    
+                                        annotation.referenceDoc && createElement('div', {
+                                            key: 'reference-doc',
+                                            className: 'annotation-reference-doc'
+                                        }, [
+                                            createElement('div', {
+                                                key: 'ref-title',
+                                                className: 'annotation-files-title'
+                                            }, 'Reference Document:'),
+                                            createElement('div', {
+                                                key: 'ref-content',
+                                                className: 'clickable-file reference-doc-item',
                                                 onClick: (e) => {
                                                     e.stopPropagation();
-                                                    handlePreviewFile(file);
+                                                    const doc = referenceDocList.find(d => String(d.id) === String(annotation.referenceDoc));
+                                                    if (doc && doc.link) {
+                                                        window.open(doc.link, '_blank');
+                                                    }
                                                 },
-                                                title: 'Click to preview file'
-                                            }, `📄 ${file.name}`)
-                                        )
-                                    ]),
+                                                title: 'Click to view reference document'
+                                            }, (() => {
+                                                const refDoc = referenceDocList.find(doc => String(doc.id) === String(annotation.referenceDoc));
+                                                return refDoc ? `📄 ${refDoc.name}` : `📄 Document ID: ${annotation.referenceDoc}`;
+                                            })())
+                                        ])
+                                    ]
+                                ]),
                                 
-                                    // Reference document
-                                    annotation.referenceDoc && createElement('div', {
-                                        key: 'reference-doc',
-                                        className: 'annotation-reference-doc'
-                                    }, [
-                                        createElement('div', {
-                                            key: 'ref-title',
-                                            className: 'annotation-files-title'
-                                        }, 'Reference Document:'),
-                                        createElement('div', {
-                                            key: 'ref-content',
-                                            className: 'clickable-file reference-doc-item',
-                                            onClick: (e) => {
-                                                e.stopPropagation();
-                                                const doc = referenceDocList.find(d => String(d.id) === String(annotation.referenceDoc));
-                                                if (doc && doc.link) {
-                                                    window.open(doc.link, '_blank');
-                                                }
-                                            },
-                                            title: 'Click to view reference document'
-                                        }, (() => {
-                                            const refDoc = referenceDocList.find(doc => String(doc.id) === String(annotation.referenceDoc));
-                                            return refDoc ? `📄 ${refDoc.name}` : `📄 Document ID: ${annotation.referenceDoc}`;
-                                        })())
-                                    ])
-                                ]
-                            ]),
-                            
-                            // Footer
-                            createElement('div', {
-                                key: 'annotation-footer',
-                                className: 'annotation-footer'
+                                // Footer
+                                createElement('div', {
+                                    key: 'annotation-footer',
+                                    className: 'annotation-footer'
+                                }, [
+                                    createElement('span', {
+                                        key: 'author',
+                                        className: 'author',
+                                        style: {
+                                            color: canEditAnnotation(annotation) ? '#10B981' : '#6B7280',
+                                            fontWeight: canEditAnnotation(annotation) ? '600' : '400'
+                                        }
+                                    }, `${annotation.user}${canEditAnnotation(annotation) ? ' (You)' : ''}`),
+                                    annotation.role && createElement('span', {
+                                        key: 'role-footer',
+                                        style: {
+                                            fontSize: '11px',
+                                            color: '#1D4ED8',
+                                            fontWeight: '500',
+                                            backgroundColor: '#EFF6FF',
+                                            padding: '1px 6px',
+                                            borderRadius: '4px'
+                                        }
+                                    }, annotation.role),
+                                    createElement('span', {
+                                        key: 'date',
+                                        className: 'date'
+                                    }, getFormattedTime(annotation.createdAt))
+                                ])
+                            ]);
+                        }) :
+                        createElement('div', {
+                            className: 'no-annotations'
+                        }, 'No annotations yet - Click "Add Annotation" to start ✨')
+                    ) :
+
+                    // ── AI tab content ───────────────────────────
+                    (aiAnnotations.length > 0 ?
+                        aiAnnotations.map((annotation) => {
+                            const isActive = activeAnnotationId === annotation.id;
+                            return createElement('div', {
+                                key: annotation.id,
+                                className: `annotation-item ${isActive ? 'selected' : ''}`,
+                                onClick: () => handleListClick(annotation),
+                                title: 'Click to navigate to AI annotation',
+                                style: {
+                                    cursor: 'pointer',
+                                    borderLeft: isActive ? `3px solid ${AI_ANNOTATION_COLOR}` : '3px solid transparent'
+                                }
                             }, [
-                                createElement('span', {
-                                    key: 'author',
-                                    className: 'author',
-                                    style: {
-                                        color: canEditAnnotation(annotation) ? '#10B981' : '#6B7280',
-                                        fontWeight: canEditAnnotation(annotation) ? '600' : '400'
-                                    }
-                                }, `${annotation.user}${canEditAnnotation(annotation) ? ' (You)' : ''}`),
-                                createElement('span', {
-                                    key: 'date',
-                                    className: 'date'
-                                }, getFormattedTime(annotation.createdAt))
-                            ])
-                        ]);
-                    }) :
-                    createElement('div', {
-                        className: 'no-annotations'
-                    }, 'No annotations yet - Click "Add Annotation" to start ✨')
+                                // AI annotation header
+                                createElement('div', {
+                                    key: 'ai-header',
+                                    className: 'annotation-item-header'
+                                }, [
+                                    createElement('span', {
+                                        key: 'ai-badge',
+                                        style: {
+                                            backgroundColor: '#FEF3C7',
+                                            color: '#92400E',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            fontSize: '11px',
+                                            fontWeight: '600'
+                                        }
+                                    }, 'AI Generated'),
+                                    annotation.role && createElement('span', {
+                                        key: 'role',
+                                        style: {
+                                            backgroundColor: '#FEF3C7',
+                                            color: '#92400E',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '11px'
+                                        }
+                                    }, annotation.role)
+                                ]),
+
+                                // AI annotation content
+                                createElement('div', {
+                                    key: 'ai-content',
+                                    className: 'annotation-content'
+                                }, [
+                                    createElement('p', {
+                                        key: 'ai-comment',
+                                        className: 'annotation-text'
+                                    }, annotation.comment || 'AI detected annotation'),
+                                    createElement('span', {
+                                        key: 'nav-hint',
+                                        style: {
+                                            fontSize: '10px',
+                                            color: '#9ca3af',
+                                            fontStyle: 'italic'
+                                        }
+                                    }, '🧭 Click to navigate')
+                                ]),
+
+                                // AI annotation footer
+                                createElement('div', {
+                                    key: 'ai-footer',
+                                    className: 'annotation-footer'
+                                }, [
+                                    createElement('span', {
+                                        key: 'ai-role',
+                                        style: {
+                                            fontSize: '11px',
+                                            color: '#92400E',
+                                            fontWeight: '500',
+                                            backgroundColor: '#FEF3C7',
+                                            padding: '1px 6px',
+                                            borderRadius: '4px'
+                                        }
+                                    }, annotation.role),
+                                    createElement('span', {
+                                        key: 'ai-time',
+                                        className: 'date'
+                                    }, annotation.timestamp ? getFormattedTime(annotation.timestamp) : '')
+                                ])
+                            ]);
+                        }) :
+                        createElement('div', {
+                            className: 'no-annotations'
+                        }, 'No AI annotations for this asset')
+                    )
                 )
             ])
         ]),
         
-        // FIXED: Form modal with proper z-index matching PDF widget approach
+        // ── FORM MODAL ───────────────────────────────────────────
         showForm && createElement(AnnotationPortal, null, createElement('div', {
             key: 'form-overlay',
             className: 'img-annotation-form-overlay',
@@ -1956,7 +1960,7 @@ function Imageannotator(props) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                zIndex: isMaximized ? 60000 : 10000, // FIXED: Use same z-index as PDF widget
+                zIndex: isMaximized ? 60000 : 10000,
                 backdropFilter: 'blur(4px)',
                 padding: '20px',
                 boxSizing: 'border-box'
@@ -1984,7 +1988,7 @@ function Imageannotator(props) {
                     position: 'relative'
                 }
             }, [
-                // Header
+                // Form header
                 createElement('div', {
                     key: 'form-header',
                     className: 'img-annotation-form-header',
@@ -2030,7 +2034,7 @@ function Imageannotator(props) {
                     }, '×')
                 ]),
                 
-                // Body
+                // Form body
                 createElement('div', {
                     key: 'form-body',
                     className: 'img-annotation-form-body',
@@ -2375,7 +2379,6 @@ function Imageannotator(props) {
                                     }
                                 }),
                                 
-                                // Dropdown arrow
                                 createElement('div', {
                                     key: 'dropdown-arrow',
                                     className: 'reference-dropdown-arrow',
@@ -2396,7 +2399,6 @@ function Imageannotator(props) {
                                     }
                                 }, showReferenceDropdown ? '▲' : '▼'),
                                 
-                                // Clear button
                                 selectedReferenceDoc && createElement('button', {
                                     key: 'clear-button',
                                     type: 'button',
@@ -2426,7 +2428,6 @@ function Imageannotator(props) {
                                 }, '×')
                             ]),
                             
-                            // Dropdown menu
                             showReferenceDropdown && createElement('div', {
                                 key: 'reference-dropdown-menu',
                                 className: 'reference-dropdown-menu',
@@ -2517,7 +2518,7 @@ function Imageannotator(props) {
                     }, `Creating annotation as: ${currentUser}`)
                 ]),
                 
-                // Footer
+                // Form footer
                 createElement('div', {
                     key: 'form-footer',
                     className: 'img-annotation-form-footer',

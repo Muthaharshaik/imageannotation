@@ -1636,7 +1636,45 @@ Image Annotator CSS - Complete Fixed Version with Modal Overlay Fix
     outline: 2px solid rgba(59, 130, 246, 0.5);
     outline-offset: 2px;
 }
+/* AI tab bar */
+.mx-imageannotator .ai-tab-bar {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-color);
+    background: white;
+}
 
+.mx-imageannotator .ai-tab-btn {
+    flex: 1;
+    padding: 7px 6px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.mx-imageannotator .ai-tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.mx-imageannotator .ai-tab-btn--active {
+    color: #3B82F6;
+    border-bottom-color: #3B82F6;
+    font-weight: 600;
+    background: white;
+}
+
+.mx-imageannotator .ai-tab-btn--active.ai-tab-btn--ai {
+    color: #F59E0B;
+    border-bottom-color: #F59E0B;
+}
 /* Responsive design */
 @media (max-width: 768px) {
     .mx-imageannotator .main-content {

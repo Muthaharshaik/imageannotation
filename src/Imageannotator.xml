@@ -69,6 +69,35 @@
                     <attributeType name="String"/>
                 </attributeTypes>
             </property>
+
+            <property key="aiAnnotationsData" type="attribute" required="false">
+                <caption>AI Annotations</caption>
+                <description>JSON String containing the AI generated Annotataions</description>
+                <attributeTypes>
+                    <attributeType name="String"/>
+                </attributeTypes>
+            </property>
+
+            <property key="isAIGenerated" type="attribute" required="false">
+                <caption>Is AI Generated</caption>
+                <description>Boolean flag to enable AI annotations tab and bounding boxes.</description>
+                <attributeTypes>
+                    <attributeType name="Boolean"/>
+                </attributeTypes>
+            </property>
+
+            <property key="userRole" type="expression" required="false">
+                <caption>User Role</caption>
+                <description>Role of the current user</description>
+                <returnType type="String"/>
+            </property>
+
+            <property key="authorID" type="expression" required="false">
+                <caption>Author ID</caption>
+                <description>ID of the Author</description>
+                <returnType type="String"/>
+            </property>
+
             <property key="onAnnotationAdd" type="action">
                 <caption>On Annotation Add</caption>
                 <description>Action triggered when a new annotation is added</description>
