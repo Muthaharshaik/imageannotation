@@ -26,6 +26,7 @@ function Imageannotator(props) {
         onAnnotationDelete,
         allowAnnotations,
         annotationMode,
+        allowReply,
         referenceDocuments,
         isAIGenerated,
         aiAnnotationsData,
@@ -60,6 +61,7 @@ function Imageannotator(props) {
     const refDocDropdownRef = useRef(null);
     const imageContainerRef = useRef(null);
     const scrollContainerRef = useRef(null);
+    const replyInputRef = useRef(null);
     
     // Core state
     const [annotations, setAnnotations] = useState([]);
@@ -123,7 +125,13 @@ function Imageannotator(props) {
     // AI annotations state
     const [aiAnnotations, setAiAnnotations] = useState([]);
     const [activeTab, setActiveTab] = useState('human');
-    
+
+    // Thread / Reply state
+    const [openThreadId, setOpenThreadId] = useState(null);
+    const [replyingToId, setReplyingToId] = useState(null);
+    const [replyText, setReplyText] = useState('');
+    const [isSubmittingReply, setIsSubmittingReply] = useState(false);
+        
     // Get current user
     const currentUser = (userName && userName.value) ? userName.value : 
                         (typeof userName === 'string' ? userName : "Unknown User");
@@ -138,6 +146,9 @@ function Imageannotator(props) {
     const AI_ANNOTATION_COLOR = '#F59E0B';
     const MAX_COMMENT_LENGTH = 100;
     const isAI = isAIGenerated?.value === true;
+
+    // allowReply is a Boolean attribute from Mendix — always { value: true/false }
+    const canReply = allowReply?.value === true;
 
     // Debug logging function
     const addDebugLog = useCallback((message) => {
@@ -528,6 +539,7 @@ function Imageannotator(props) {
         }
     }, [aiAnnotationsData, isAI, widgetInstanceId]);
 
+
     // Save annotations to Mendix
     const saveAnnotationsToMendix = useCallback((annotationsArray) => {
         addDebugLog("=== SAVING IMAGE ANNOTATIONS TO MENDIX ===");
@@ -606,7 +618,7 @@ function Imageannotator(props) {
         };
     }, [widgetInstanceId, imageLoaded]);
 
-    // Scroll to annotation position — fixed to handle AI annotations (area only, no type/position)
+    // Scroll to annotation position
     const scrollToAnnotation = useCallback((annotation) => {
         if (!scrollContainerRef.current || !imageRef.current || !imageLoaded) {
             return;
@@ -994,7 +1006,8 @@ function Imageannotator(props) {
                 createdInMaximizedView: isMaximized,
                 positioningVersion: 'v12-natural-size-with-scroll-navigation',
                 imageDimensions: imageDimensions,
-                coordinateSystem: 'percentage-natural-size'
+                coordinateSystem: 'percentage-natural-size',
+                replies: []
             };
 
             updatedAnnotations = [...annotations, newAnnotation];
@@ -1241,6 +1254,135 @@ function Imageannotator(props) {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }, []);
+
+    // ── THREAD / REPLY FUNCTIONS ────────────────────────────────────
+    const handleToggleThread = useCallback((annotation, e) => {
+        e.stopPropagation();
+        setOpenThreadId(prev => prev === annotation.id ? null : annotation.id);
+        setReplyingToId(null);
+        setReplyText('');
+    }, []);
+
+    const handleSetReplyingTo = useCallback((id) => {
+        setReplyingToId(id);
+        setReplyText('');
+        setTimeout(() => { if (replyInputRef.current) replyInputRef.current.focus(); }, 80);
+    }, []);
+
+    const handleCancelReply = useCallback(() => {
+        setReplyingToId(null);
+        setReplyText('');
+    }, []);
+
+    const handleReplySubmit = useCallback(() => {
+        if (!replyText.trim() || !openThreadId || isSubmittingReply) return;
+        setIsSubmittingReply(true);
+
+        const ann = annotations.find(a => a.id === openThreadId);
+        if (!ann) { setIsSubmittingReply(false); return; }
+
+        const replyToId = replyingToId !== null ? replyingToId : ann.id;
+        const allReplies = ann.replies || [];
+        const replyToUser = replyToId === ann.id
+            ? ann.user
+            : (allReplies.find(r => r.id === replyToId)?.user || '');
+
+        const newReply = {
+            id: `reply-${widgetInstanceId}-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`,
+            parentId: ann.id,
+            annotationUser: ann.user,
+            replyToId,
+            replyToUser,
+            user: currentUser,
+            role: currentUserRole,
+            comment: replyText.trim(),
+            createdAt: new Date().toISOString()
+        };
+
+        const updatedAnnotations = annotations.map(a =>
+            a.id === ann.id ? { ...a, replies: [...(a.replies || []), newReply] } : a
+        );
+
+        saveAnnotations(updatedAnnotations);
+        setReplyText('');
+        setReplyingToId(null);
+        setIsSubmittingReply(false);
+    }, [replyText, openThreadId, replyingToId, annotations, saveAnnotations, currentUser, currentUserRole, widgetInstanceId, isSubmittingReply]);
+
+    const getReplyCount = useCallback((annotation) => (annotation.replies || []).length, []);
+
+    // Inline reply composer
+    const renderReplyInput = useCallback((targetId) => {
+        if (replyingToId !== targetId) return null;
+        return createElement('div', { key: `reply-input-${targetId}`, className: 'thread-reply-input-container' }, [
+            createElement('div', { key: 'avatar', className: 'thread-reply-avatar thread-reply-avatar--self' },
+                currentUser.charAt(0).toUpperCase()),
+            createElement('div', { key: 'wrap', className: 'thread-reply-input-wrap' }, [
+                createElement('textarea', {
+                    key: 'ta', ref: replyInputRef, className: 'thread-reply-textarea',
+                    placeholder: 'Write a reply…', value: replyText, rows: 2,
+                    onChange: e => setReplyText(e.target.value),
+                    onKeyDown: e => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleReplySubmit();
+                        if (e.key === 'Escape') handleCancelReply();
+                    }
+                }),
+                createElement('div', { key: 'actions', className: 'thread-reply-input-actions' }, [
+                    createElement('span', { key: 'hint', className: 'thread-reply-hint' }, 'Ctrl+Enter to send'),
+                    createElement('div', { key: 'btns', style: { display: 'flex', gap: '8px' } }, [
+                        createElement('button', { key: 'cancel', className: 'thread-btn thread-btn--ghost', onClick: handleCancelReply }, 'Cancel'),
+                        createElement('button', {
+                            key: 'submit', className: 'thread-btn thread-btn--primary',
+                            onClick: handleReplySubmit, disabled: !replyText.trim() || isSubmittingReply
+                        }, isSubmittingReply ? 'Sending…' : 'Reply')
+                    ])
+                ])
+            ])
+        ]);
+    }, [replyingToId, replyText, currentUser, handleReplySubmit, handleCancelReply, isSubmittingReply]);
+
+    // Recursive threaded replies — grouped by replyToId
+    const renderThreadedReplies = useCallback((allReplies, parentReplyToId, depth = 0) => {
+        if (!allReplies || allReplies.length === 0) return null;
+        const children = allReplies.filter(r => r.replyToId === parentReplyToId);
+        if (children.length === 0) return null;
+
+        return children.map(reply =>
+            createElement('div', { key: reply.id, className: `thread-reply-row${depth > 0 ? ' thread-reply-row--nested' : ''}` }, [
+                depth > 0 && createElement('div', { key: 'line', className: 'thread-connector-line' }),
+                createElement('div', { key: 'content', className: 'thread-reply-content' }, [
+                    createElement('div', {
+                        key: 'avatar',
+                        className: `thread-reply-avatar${reply.user === currentUser ? ' thread-reply-avatar--self' : ''}`
+                    }, reply.user.charAt(0).toUpperCase()),
+                    createElement('div', { key: 'body', className: 'thread-reply-body' }, [
+                        createElement('div', { key: 'bubble', className: 'thread-reply-bubble' }, [
+                            // "↩ replying to @user" context pill — only for nested replies
+                            reply.replyToId !== reply.parentId && createElement('div', {
+                                key: 'context', className: 'thread-reply-context'
+                            }, `↩ replying to ${reply.replyToUser}`),
+                            createElement('div', { key: 'meta', className: 'thread-reply-meta' }, [
+                                createElement('span', {
+                                    key: 'user',
+                                    className: `thread-reply-user${reply.user === currentUser ? ' thread-reply-user--self' : ''}`
+                                }, `${reply.user}${reply.user === currentUser ? ' (You)' : ''}`),
+                                reply.role && createElement('span', { key: 'role', className: 'thread-role-badge' }, reply.role),
+                                createElement('span', { key: 'time', className: 'thread-reply-time' }, getFormattedTime(reply.createdAt))
+                            ]),
+                            createElement('p', { key: 'text', className: 'thread-reply-text' }, reply.comment)
+                        ]),
+                        canReply && createElement('div', { key: 'actions', className: 'thread-reply-actions' }, [
+                            replyingToId !== reply.id
+                                ? createElement('button', { key: 'rb', className: 'thread-inline-reply-btn', onClick: () => handleSetReplyingTo(reply.id) }, '↩ Reply')
+                                : renderReplyInput(reply.id)
+                        ])
+                    ])
+                ]),
+                renderThreadedReplies(allReplies, reply.id, depth + 1)
+            ])
+        );
+    }, [replyingToId, canReply, currentUser, getFormattedTime, renderReplyInput, handleSetReplyingTo]);
+
 
     // Loading spinner
     const renderLoadingSpinner = () => {
@@ -1627,7 +1769,7 @@ function Imageannotator(props) {
                 key: 'annotations-sidebar',
                 className: 'annotations-sidebar'
             }, [
-                // Sidebar header — always same structure so Mendix CSS ::before keeps working
+                // Sidebar header
                 createElement('div', {
                     key: 'sidebar-header',
                     className: 'sidebar-header'
@@ -1646,7 +1788,6 @@ function Imageannotator(props) {
                 ]),
 
                 // AI tab bar — only rendered when isAI = true
-                // Sits between sidebar-header and annotations-list
                 isAI ? createElement('div', {
                     key: 'ai-tab-bar',
                     className: 'ai-tab-bar'
@@ -1663,7 +1804,7 @@ function Imageannotator(props) {
                     }, 'AI Annotations')
                 ]) : null,
 
-                // Annotations list — shows human or AI content based on activeTab
+                // Annotations list
                 createElement('div', {
                     key: 'annotations-list',
                     className: 'annotations-list'
@@ -1675,6 +1816,7 @@ function Imageannotator(props) {
                             const isActive = activeAnnotationId === annotation.id;
                             const annotationNumber = getAnnotationNumber(annotation.id);
                             const isExpanded = expandedAnnotations.has(annotation.id);
+                            const replyCount = getReplyCount(annotation);
                             
                             return createElement('div', {
                                 key: annotation.id,
@@ -1701,15 +1843,15 @@ function Imageannotator(props) {
                                             className: 'annotation-type'
                                         }, annotation.type === 'area' ? '🟧' : '📍'),
                                         annotation.role && createElement('span', {
-                                        key: 'role-badge',
-                                        style:{
-                                                backgroundColor:'#eff6ff',
-                                                color:'#1d4ed8',
+                                            key: 'role-badge',
+                                            style: {
+                                                backgroundColor: '#eff6ff',
+                                                color: '#1d4ed8',
                                                 padding: '2px 8px',
                                                 borderRadius: '4px',
                                                 fontSize: '11px',
                                                 fontWeight: '600'
-                                        }
+                                            }
                                         }, annotation.role),
                                         createElement('span', {
                                             key: 'navigation-hint',
@@ -1846,6 +1988,53 @@ function Imageannotator(props) {
                                         key: 'date',
                                         className: 'date'
                                     }, getFormattedTime(annotation.createdAt))
+                                ]),
+
+                                // Reply button + inline thread — human annotations only
+                                canReply && createElement('div', {
+                                    key: 'reply-section',
+                                    className: 'annotation-reply-section',
+                                    onClick: e => e.stopPropagation()
+                                }, [
+                                    // Reply toggle button
+                                    createElement('button', {
+                                        key: 'toggle-thread-btn',
+                                        className: `annotation-reply-btn${openThreadId === annotation.id ? ' annotation-reply-btn--active' : ''}`,
+                                        onClick: e => handleToggleThread(annotation, e)
+                                    }, [
+                                        createElement('span', { key: 'icon', className: 'annotation-reply-btn-icon' }, '💬'),
+                                        createElement('span', { key: 'label' },
+                                            replyCount > 0
+                                                ? `${replyCount} ${replyCount === 1 ? 'Reply' : 'Replies'}`
+                                                : 'Reply'
+                                        ),
+                                        createElement('span', { key: 'chevron', className: 'annotation-reply-chevron' },
+                                            openThreadId === annotation.id ? ' ▲' : ' ▼'
+                                        )
+                                    ]),
+
+                                    // Inline thread — shown when this annotation's thread is open
+                                    openThreadId === annotation.id && createElement('div', {
+                                        key: 'inline-thread',
+                                        className: 'inline-thread'
+                                    }, [
+                                        // Existing replies
+                                        (annotation.replies || []).length > 0 && createElement('div', {
+                                            key: 'replies',
+                                            className: 'inline-thread-replies'
+                                        }, renderThreadedReplies(annotation.replies, annotation.id, 0)),
+
+                                        // Reply to root composer / button
+                                        createElement('div', { key: 'composer', className: 'inline-thread-composer' }, [
+                                            replyingToId !== annotation.id
+                                                ? createElement('button', {
+                                                    key: 'reply-root-btn',
+                                                    className: 'thread-reply-to-root-btn',
+                                                    onClick: () => handleSetReplyingTo(annotation.id)
+                                                }, '↩ Write a reply…')
+                                                : renderReplyInput(annotation.id)
+                                        ])
+                                    ])
                                 ])
                             ]);
                         }) :
@@ -2572,7 +2761,7 @@ function Imageannotator(props) {
             ])
         ])),
         
-        // FIXED: File preview modal with proper z-index matching PDF widget approach
+        // ── FILE PREVIEW MODAL ───────────────────────────────────
         showFilePreview && previewFile && createElement(AnnotationPortal, null, createElement('div', {
             key: 'file-preview-overlay',
             className: 'img-file-preview-overlay',
@@ -2586,7 +2775,7 @@ function Imageannotator(props) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                zIndex: isMaximized ? 60000 : 20000, // FIXED: Use same z-index as PDF widget
+                zIndex: isMaximized ? 60000 : 20000,
                 backdropFilter: 'blur(4px)',
                 boxSizing: 'border-box'
             },
@@ -2761,7 +2950,7 @@ function Imageannotator(props) {
                             ) : null
                 ])
             ])
-        ]))
+        ])),
     ]);
 }
 
