@@ -26,6 +26,8 @@ function Imageannotator(props) {
         onAnnotationDelete,
         allowAnnotations,
         annotationMode,
+        widgetLogs,
+        onLogEvent,
         allowReply,
         referenceDocuments,
         isAIGenerated,
@@ -40,7 +42,7 @@ function Imageannotator(props) {
 
     // Handle class prop from Mendix Studio Pro
     const className = otherProps.class || otherProps.className || '';
-    
+
     // Ultra-unique widget instance ID
     const [widgetInstanceId] = useState(() => {
         globalWidgetCounter++;
@@ -51,7 +53,7 @@ function Imageannotator(props) {
         const uniqueHash = Math.random().toString(36).substr(2, 8);
         return `img-widget-${counterPart}-${timestamp}-${randomPart}-${processId}-${uniqueHash}`;
     });
-    
+
     // Multiple isolated refs for complete widget separation
     const imageRef = useRef(null);
     const richTextRef = useRef(null);
@@ -62,24 +64,27 @@ function Imageannotator(props) {
     const imageContainerRef = useRef(null);
     const scrollContainerRef = useRef(null);
     const replyInputRef = useRef(null);
-    
+
+    // ── Ref to break circular dependency between logEvent ↔ executeMendixAction ──
+    const logEventRef = useRef(null);
+
     // Core state
     const [annotations, setAnnotations] = useState([]);
     const [imageUrl, setImageUrl] = useState(null);
     const [loadingImage, setLoadingImage] = useState(false);
     const [imageError, setImageError] = useState(null);
     const [imageLoaded, setImageLoaded] = useState(false);
-    
+
     // Image dimensions
-    const [imageDimensions, setImageDimensions] = useState({ 
-        width: 0, 
-        height: 0, 
-        aspectRatio: 1 
+    const [imageDimensions, setImageDimensions] = useState({
+        width: 0,
+        height: 0,
+        aspectRatio: 1
     });
-    
+
     // Maximize/Minimize state
     const [isMaximized, setIsMaximized] = useState(false);
-    
+
     // Annotation state
     const [isAnnotationMode, setIsAnnotationMode] = useState(false);
     const [annotationType, setAnnotationType] = useState('point');
@@ -87,38 +92,38 @@ function Imageannotator(props) {
     const [selectedPosition, setSelectedPosition] = useState(null);
     const [selectedArea, setSelectedArea] = useState(null);
     const [activeAnnotationId, setActiveAnnotationId] = useState(null);
-    
+
     // Area selection state
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPoint, setStartPoint] = useState(null);
     const [currentArea, setCurrentArea] = useState(null);
-    
+
     // Form state
     const [comment, setComment] = useState('');
     const [selectedReferenceDoc, setSelectedReferenceDoc] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editingAnnotation, setEditingAnnotation] = useState(null);
-    
+
     // File upload state
     const [uploadedFiles, setUploadedFiles] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
     const [richTextContent, setRichTextContent] = useState('');
-    
+
     // File preview state
     const [showFilePreview, setShowFilePreview] = useState(false);
     const [previewFile, setPreviewFile] = useState(null);
     const [loadingPreview, setLoadingPreview] = useState(false);
-    
+
     // Reference document search state
     const [referenceSearchTerm, setReferenceSearchTerm] = useState('');
     const [showReferenceDropdown, setShowReferenceDropdown] = useState(false);
     const [selectedReferenceDocName, setSelectedReferenceDocName] = useState('');
-    
+
     // UI state
     const [showAnnotationDropdown, setShowAnnotationDropdown] = useState(false);
     const [canAddAnnotations, setCanAddAnnotations] = useState(true);
     const [referenceDocList, setReferenceDocList] = useState([]);
-    
+
     // Read more/less state for annotations
     const [expandedAnnotations, setExpandedAnnotations] = useState(new Set());
 
@@ -131,16 +136,16 @@ function Imageannotator(props) {
     const [replyingToId, setReplyingToId] = useState(null);
     const [replyText, setReplyText] = useState('');
     const [isSubmittingReply, setIsSubmittingReply] = useState(false);
-        
+
     // Get current user
-    const currentUser = (userName && userName.value) ? userName.value : 
-                        (typeof userName === 'string' ? userName : "Unknown User");
+    const currentUser = (userName && userName.value) ? userName.value :
+        (typeof userName === 'string' ? userName : "Unknown User");
 
     const currentUserRole = (userRole && userRole.value !== undefined) ? (userRole.value || '') :
-                            (typeof userRole === 'string' ? userRole : '');
+        (typeof userRole === 'string' ? userRole : '');
 
     const currentAuthorId = (authorID && authorID.value !== undefined) ? (authorID.value || '') :
-                            (typeof authorID === 'string' ? authorID : '');
+        (typeof authorID === 'string' ? authorID : '');
 
     const ANNOTATION_COLOR = '#3B82F6';
     const AI_ANNOTATION_COLOR = '#F59E0B';
@@ -150,12 +155,14 @@ function Imageannotator(props) {
     // allowReply is a Boolean attribute from Mendix — always { value: true/false }
     const canReply = allowReply?.value === true;
 
-    // Debug logging function
+    // ── Debug logging (console only) ────────────────────────────────────────────
     const addDebugLog = useCallback((message) => {
         console.log(`[Widget ${widgetInstanceId}] ${message}`);
     }, [widgetInstanceId]);
 
-    // Execute Mendix microflow with proper error handling
+    // ── executeMendixAction ─────────────────────────────────────────────────────
+    // Uses logEventRef.current instead of logEvent directly to avoid circular deps.
+    // Guards actionName !== 'onLogEvent' to prevent infinite loops.
     const executeMendixAction = useCallback((action, actionName) => {
         if (!action) {
             addDebugLog(`⚠️ ${actionName} action not configured`);
@@ -163,61 +170,140 @@ function Imageannotator(props) {
         }
 
         addDebugLog(`📞 Executing ${actionName} microflow...`);
-        
+
         try {
             if (action && typeof action.execute === 'function') {
-                addDebugLog(`🎯 Calling ${actionName} via execute() method`);
                 action.execute();
                 addDebugLog(`✅ ${actionName} microflow executed successfully via execute()`);
+                if (actionName !== 'onLogEvent') {
+                    logEventRef.current?.('SUCCESS', `Microflow executed: ${actionName}`);
+                }
                 return true;
             }
             else if (typeof action === 'function') {
-                addDebugLog(`🎯 Calling ${actionName} as direct function`);
                 action();
                 addDebugLog(`✅ ${actionName} microflow executed successfully as function`);
+                if (actionName !== 'onLogEvent') {
+                    logEventRef.current?.('SUCCESS', `Microflow executed: ${actionName}`);
+                }
                 return true;
             }
             else if (action && typeof action === 'object') {
                 addDebugLog(`🔍 ${actionName} is object, checking for callable methods`);
-                
+
                 if (typeof action.call === 'function') {
-                    addDebugLog(`🎯 Calling ${actionName} via call() method`);
                     action.call();
                     addDebugLog(`✅ ${actionName} microflow executed successfully via call()`);
+                    if (actionName !== 'onLogEvent') {
+                        logEventRef.current?.('SUCCESS', `Microflow executed: ${actionName}`);
+                    }
                     return true;
                 }
-                
+
                 if (typeof action.invoke === 'function') {
-                    addDebugLog(`🎯 Calling ${actionName} via invoke() method`);
                     action.invoke();
                     addDebugLog(`✅ ${actionName} microflow executed successfully via invoke()`);
+                    if (actionName !== 'onLogEvent') {
+                        logEventRef.current?.('SUCCESS', `Microflow executed: ${actionName}`);
+                    }
                     return true;
                 }
-                
+
                 const availableMethods = Object.getOwnPropertyNames(action).filter(prop => typeof action[prop] === 'function');
                 addDebugLog(`🔍 Available methods on ${actionName}: ${availableMethods.join(', ')}`);
             }
-            
+
             addDebugLog(`❌ ${actionName} action exists but no valid execution method found`);
             addDebugLog(`🔍 ${actionName} type: ${typeof action}, constructor: ${action?.constructor?.name}`);
-            
+            if (actionName !== 'onLogEvent') {
+                logEventRef.current?.('ERROR', `Microflow not executable: ${actionName}`,
+                    `type: ${typeof action} | constructor: ${action?.constructor?.name}`);
+            }
             return false;
-            
+
         } catch (error) {
             addDebugLog(`❌ Error executing ${actionName} microflow: ${error.message}`);
+            if (actionName !== 'onLogEvent') {
+                logEventRef.current?.('ERROR', `Microflow threw exception: ${actionName}`, error.message);
+            }
             console.error(`[Widget ${widgetInstanceId}] ${actionName} execution error:`, error);
             return false;
         }
-    }, [addDebugLog, widgetInstanceId]);
+    }, [addDebugLog, widgetInstanceId]); // no logEvent dep — uses ref instead
+
+    // ── Structured log shipping to Mendix ──────────────────────────────────────
+    // Levels: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR'
+    // Fires onLogEvent directly (not via executeMendixAction) to avoid circular deps.
+    const logEvent = useCallback((level, message, detail = '') => {
+        // Always echo to the browser console
+        const consoleMethod = level === 'ERROR' ? 'error'
+            : level === 'WARNING' ? 'warn'
+            : 'log';
+        console[consoleMethod](
+            `[Widget ${widgetInstanceId}] [${level}] ${message}`,
+            detail || ''
+        );
+
+        if (!widgetLogs) return; // attribute not wired up — skip Mendix shipping
+
+        try {
+            // Build the new log entry
+            const entry = {
+                widgetInstanceId,
+                level,
+                message,
+                detail: detail ? String(detail) : undefined,
+                timestamp: new Date().toISOString()
+            };
+
+            // Read any previously stored entries so we can append
+            let existing = [];
+            try {
+                const raw = widgetLogs.value;
+                if (raw && raw.trim() !== '' && raw !== '[]') {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) existing = parsed;
+                }
+            } catch (_) {
+                existing = [];
+            }
+
+            // Keep only the most-recent 200 entries to avoid unbounded growth
+            const MAX_LOG_ENTRIES = 200;
+            const updated = [...existing, entry].slice(-MAX_LOG_ENTRIES);
+            const jsonString = JSON.stringify(updated);
+
+            // Write back to the Mendix attribute
+            if (typeof widgetLogs.setValue === 'function') {
+                widgetLogs.setValue(jsonString);
+            } else if (widgetLogs.value !== undefined) {
+                widgetLogs.value = jsonString;
+            }
+
+            // Fire onLogEvent directly — NOT via executeMendixAction (would be circular)
+            if (onLogEvent && typeof onLogEvent.execute === 'function') {
+                onLogEvent.execute();
+            } else if (typeof onLogEvent === 'function') {
+                onLogEvent();
+            }
+
+        } catch (err) {
+            console.error(`[Widget ${widgetInstanceId}] logEvent write failed:`, err);
+        }
+    }, [widgetInstanceId, widgetLogs, onLogEvent]); // no executeMendixAction dep
+
+    // ── Keep ref in sync so executeMendixAction can always call the latest logEvent ──
+    logEventRef.current = logEvent;
 
     // Widget mount/unmount logging
     useEffect(() => {
         console.log(`🚀 [Widget ${widgetInstanceId}] ImageAnnotator initialized`);
+        logEvent('INFO', 'Widget initialized', `Instance: ${widgetInstanceId}`);
         addDebugLog("=== MICROFLOW CONFIGURATION CHECK ===");
         addDebugLog(`onAnnotationAdd configured: ${!!onAnnotationAdd}`);
         addDebugLog(`onAnnotationDelete configured: ${!!onAnnotationDelete}`);
         addDebugLog("=== END MICROFLOW CONFIGURATION CHECK ===");
-        
+
         return () => {
             console.log(`🔥 [Widget ${widgetInstanceId}] ImageAnnotator unmounted`);
             uploadedFiles.forEach(file => {
@@ -226,29 +312,32 @@ function Imageannotator(props) {
                 }
             });
         };
-    }, [widgetInstanceId, onAnnotationAdd, onAnnotationDelete, addDebugLog]);
+    }, [widgetInstanceId, onAnnotationAdd, onAnnotationDelete, addDebugLog, logEvent]);
 
     // Simple image load handler
     const handleImageLoad = useCallback(() => {
         if (imageRef.current) {
             const { naturalWidth, naturalHeight } = imageRef.current;
             const aspectRatio = naturalWidth / naturalHeight;
-            
+
             setImageDimensions({
                 width: naturalWidth,
                 height: naturalHeight,
                 aspectRatio: aspectRatio
             });
-            
+
             setImageLoaded(true);
-            
+
+            logEvent('SUCCESS', 'Image loaded successfully',
+                `${naturalWidth}×${naturalHeight}px | ratio: ${aspectRatio.toFixed(4)} | file: ${s3FileName?.value}`);
+
             console.log(`🖼️ [Widget ${widgetInstanceId}] Image loaded:`, {
                 width: naturalWidth,
                 height: naturalHeight,
                 aspectRatio: aspectRatio.toFixed(4)
             });
         }
-    }, [widgetInstanceId]);
+    }, [widgetInstanceId, imageLoaded, logEvent, s3FileName]);
 
     // Handle maximize/minimize toggle
     const handleMaximizeToggle = useCallback(() => {
@@ -275,7 +364,7 @@ function Imageannotator(props) {
     // Custom editability effect
     useEffect(() => {
         let shouldShowButton = true;
-        
+
         if (readOnly === true) {
             shouldShowButton = false;
         } else if (allowAnnotations !== undefined && allowAnnotations !== null) {
@@ -293,7 +382,7 @@ function Imageannotator(props) {
                 }
             }
         }
-        
+
         setCanAddAnnotations(shouldShowButton);
     }, [allowAnnotations, annotationMode, readOnly, widgetInstanceId]);
 
@@ -317,7 +406,7 @@ function Imageannotator(props) {
             const method = 'GET';
             const service = 's3';
             const endpoint = `https://${bucket}.s3.${region}.amazonaws.com`;
-            
+
             const encodeS3Key = (key) => {
                 let decodedKey;
                 try {
@@ -325,40 +414,40 @@ function Imageannotator(props) {
                 } catch (e) {
                     decodedKey = key;
                 }
-                
+
                 const pathParts = decodedKey.split('/');
                 const encodedParts = pathParts.map(part => {
                     return encodeURIComponent(part)
-                        .replace(/[!'()*]/g, function(c) {
+                        .replace(/[!'()*]/g, function (c) {
                             return '%' + c.charCodeAt(0).toString(16).toUpperCase();
                         });
                 });
-                
+
                 return encodedParts.join('/');
             };
-            
+
             const encodedKey = encodeS3Key(key);
             const canonicalUri = `/${encodedKey}`;
-            
+
             const now = new Date();
             const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
             const dateStamp = amzDate.substr(0, 8);
-            
+
             const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
             const algorithm = 'AWS4-HMAC-SHA256';
-            
+
             const queryParams = new URLSearchParams();
             queryParams.set('X-Amz-Algorithm', algorithm);
             queryParams.set('X-Amz-Credential', `${accessKey}/${credentialScope}`);
             queryParams.set('X-Amz-Date', amzDate);
             queryParams.set('X-Amz-Expires', '3600');
             queryParams.set('X-Amz-SignedHeaders', 'host');
-            
+
             const canonicalQuerystring = queryParams.toString();
             const canonicalHeaders = `host:${bucket}.s3.${region}.amazonaws.com\n`;
             const signedHeaders = 'host';
             const payloadHash = 'UNSIGNED-PAYLOAD';
-            
+
             const canonicalRequest = [
                 method,
                 canonicalUri,
@@ -367,22 +456,22 @@ function Imageannotator(props) {
                 signedHeaders,
                 payloadHash
             ].join('\n');
-            
+
             const stringToSign = [
                 algorithm,
                 amzDate,
                 credentialScope,
                 CryptoJS.SHA256(canonicalRequest).toString()
             ].join('\n');
-            
+
             const kDate = CryptoJS.HmacSHA256(dateStamp, `AWS4${secretKey}`);
             const kRegion = CryptoJS.HmacSHA256(region, kDate);
             const kService = CryptoJS.HmacSHA256(service, kRegion);
             const kSigning = CryptoJS.HmacSHA256('aws4_request', kService);
             const signature = CryptoJS.HmacSHA256(stringToSign, kSigning).toString();
-            
+
             queryParams.set('X-Amz-Signature', signature);
-            
+
             const finalUrl = `${endpoint}${canonicalUri}?${queryParams.toString()}`;
             return finalUrl;
         } catch (error) {
@@ -403,10 +492,14 @@ function Imageannotator(props) {
             if (!awsRegion?.value) missingParams.push('region');
             
             const errorMsg = `Missing required AWS configuration: ${missingParams.join(', ')}`;
+            logEvent('ERROR', 'Image URL generation failed — missing config', errorMsg);
             setImageError(errorMsg);
             setLoadingImage(false);
             return;
         }
+
+        logEvent('INFO', 'Generating signed S3 URL',
+            `bucket: ${s3BucketName.value} | file: ${s3FileName.value} | region: ${awsRegion.value}`);
 
         setLoadingImage(true);
         setImageError(null);
@@ -422,31 +515,38 @@ function Imageannotator(props) {
                 awsAccessKey.value,
                 awsSecretKey.value
             );
-            
+
             const testImage = new Image();
             testImage.onload = () => {
+                logEvent('SUCCESS', 'Signed URL validated — image reachable',
+                    `file: ${s3FileName.value}`);
                 setImageUrl(signedUrl);
                 setLoadingImage(false);
             };
             testImage.onerror = (error) => {
-                setImageError(`Failed to load image: Please check the file path and AWS configuration`);
+                const msg = 'Failed to load image: Please check the file path and AWS configuration';
+                logEvent('ERROR', 'Image fetch failed after URL generation', msg);
+                setImageError(msg);
                 setLoadingImage(false);
             };
-            
+
             setTimeout(() => {
                 if (!testImage.complete) {
+                    logEvent('WARNING', 'Image load timeout — forcing URL render',
+                        `file: ${s3FileName.value}`);
                     setImageUrl(signedUrl);
                     setLoadingImage(false);
                 }
             }, 10000);
-            
+
             testImage.src = signedUrl;
-            
+
         } catch (error) {
+            logEvent('ERROR', 'generateSignedUrl threw an exception', error.message);
             setImageError(`Failed to generate image URL: ${error.message}`);
             setLoadingImage(false);
         }
-    }, [s3BucketName, s3FileName, awsAccessKey, awsSecretKey, awsRegion, generateSignedUrl, widgetInstanceId]);
+    }, [s3BucketName, s3FileName, awsAccessKey, awsSecretKey, awsRegion, generateSignedUrl, widgetInstanceId, logEvent]);
 
     // Load image URL when AWS credentials change
     useEffect(() => {
@@ -465,7 +565,7 @@ function Imageannotator(props) {
             } else if (typeof referenceDocuments === 'string') {
                 docData = referenceDocuments;
             }
-            
+
             if (docData && typeof docData === 'string' && docData.trim() !== '' && docData !== '[]') {
                 try {
                     const parsed = JSON.parse(docData);
@@ -491,13 +591,13 @@ function Imageannotator(props) {
         try {
             let annotationsData = null;
             let loadedAnnotations = [];
-            
+
             if (imageAnnotations && imageAnnotations.value !== undefined) {
                 annotationsData = imageAnnotations.value;
             } else if (typeof imageAnnotations === 'string') {
                 annotationsData = imageAnnotations;
             }
-            
+
             if (annotationsData && typeof annotationsData === 'string' && annotationsData.trim() !== '' && annotationsData !== '[]') {
                 try {
                     const parsed = JSON.parse(annotationsData);
@@ -506,7 +606,7 @@ function Imageannotator(props) {
                     loadedAnnotations = [];
                 }
             }
-            
+
             setAnnotations(loadedAnnotations);
         } catch (error) {
             setAnnotations([]);
@@ -539,21 +639,23 @@ function Imageannotator(props) {
         }
     }, [aiAnnotationsData, isAI, widgetInstanceId]);
 
-
     // Save annotations to Mendix
     const saveAnnotationsToMendix = useCallback((annotationsArray) => {
         addDebugLog("=== SAVING IMAGE ANNOTATIONS TO MENDIX ===");
-        
+
         try {
             const jsonString = JSON.stringify(annotationsArray);
             let saveSuccess = false;
-            
+
             if (imageAnnotations && typeof imageAnnotations.setValue === 'function') {
                 try {
                     imageAnnotations.setValue(jsonString);
+                    logEvent('SUCCESS', 'Annotations saved to Mendix attribute',
+                        `count: ${annotationsArray.length}`);
                     saveSuccess = true;
                 } catch (error) {
                     addDebugLog(`❌ Direct attribute update failed: ${error.message}`);
+                    logEvent('ERROR', 'Failed to save annotations to Mendix', error.message);
                 }
             } else if (imageAnnotations && imageAnnotations.value !== undefined) {
                 try {
@@ -563,17 +665,17 @@ function Imageannotator(props) {
                     addDebugLog(`❌ Direct value assignment failed: ${error.message}`);
                 }
             }
-            
+
             if (onAnnotationAdd) {
                 executeMendixAction(onAnnotationAdd, 'onAnnotationAdd');
             }
-            
+
         } catch (error) {
             addDebugLog(`❌ Error saving annotations: ${error.message}`);
         }
-        
+
         addDebugLog("=== END SAVING IMAGE ANNOTATIONS ===");
-    }, [onAnnotationAdd, imageAnnotations, addDebugLog, executeMendixAction, widgetInstanceId]);
+    }, [onAnnotationAdd, imageAnnotations, addDebugLog, executeMendixAction, logEvent, widgetInstanceId]);
 
     const saveAnnotations = useCallback((newAnnotations) => {
         setAnnotations(newAnnotations);
@@ -594,27 +696,27 @@ function Imageannotator(props) {
         const img = imageRef.current;
         const imgRect = img.getBoundingClientRect();
         const { naturalWidth, naturalHeight } = img;
-        
+
         if (!naturalWidth || !naturalHeight) {
             return null;
         }
-        
+
         const clickX = event.clientX - imgRect.left;
         const clickY = event.clientY - imgRect.top;
-        
+
         if (clickX < 0 || clickX >= imgRect.width || clickY < 0 || clickY >= imgRect.height) {
             return null;
         }
-        
+
         const xPercent = (clickX / imgRect.width) * 100;
         const yPercent = (clickY / imgRect.height) * 100;
-        
+
         const clampedX = Math.max(0, Math.min(100, xPercent));
         const clampedY = Math.max(0, Math.min(100, yPercent));
-        
-        return { 
-            x: Number(clampedX.toFixed(2)), 
-            y: Number(clampedY.toFixed(2)) 
+
+        return {
+            x: Number(clampedX.toFixed(2)),
+            y: Number(clampedY.toFixed(2))
         };
     }, [widgetInstanceId, imageLoaded]);
 
@@ -627,13 +729,13 @@ function Imageannotator(props) {
         const scrollContainer = scrollContainerRef.current;
         const img = imageRef.current;
         const { naturalWidth, naturalHeight } = img;
-        
+
         if (!naturalWidth || !naturalHeight) {
             return;
         }
 
         let targetXPercent, targetYPercent;
-        
+
         if (annotation.type === 'area' || annotation.area) {
             targetXPercent = annotation.area.x + annotation.area.width / 2;
             targetYPercent = annotation.area.y + annotation.area.height / 2;
@@ -644,35 +746,35 @@ function Imageannotator(props) {
             console.warn(`⚠️ [Widget ${widgetInstanceId}] No position data, skipping scroll`);
             return;
         }
-        
+
         const targetXPixels = (targetXPercent / 100) * naturalWidth;
         const targetYPixels = (targetYPercent / 100) * naturalHeight;
-        
+
         const imageMargin = 20;
         const adjustedTargetX = targetXPixels + imageMargin;
         const adjustedTargetY = targetYPixels + imageMargin;
-        
+
         const containerWidth = scrollContainer.clientWidth;
         const containerHeight = scrollContainer.clientHeight;
-        
+
         const scrollLeft = adjustedTargetX - (containerWidth / 2);
         const scrollTop = adjustedTargetY - (containerHeight / 2);
-        
+
         const totalWidth = naturalWidth + (imageMargin * 2);
         const totalHeight = naturalHeight + (imageMargin * 2);
-        
+
         const maxScrollLeft = Math.max(0, totalWidth - containerWidth);
         const maxScrollTop = Math.max(0, totalHeight - containerHeight);
-        
+
         const finalScrollLeft = Math.max(0, Math.min(scrollLeft, maxScrollLeft));
         const finalScrollTop = Math.max(0, Math.min(scrollTop, maxScrollTop));
-        
+
         scrollContainer.scrollTo({
             left: finalScrollLeft,
             top: finalScrollTop,
             behavior: 'smooth'
         });
-        
+
         console.log(`🎯 [Widget ${widgetInstanceId}] Scrolled to annotation ${annotation.id}`);
     }, [widgetInstanceId, imageLoaded]);
 
@@ -682,10 +784,10 @@ function Imageannotator(props) {
 
         event.preventDefault();
         event.stopPropagation();
-        
+
         const coords = getRelativeCoordinates(event);
         if (!coords) return;
-        
+
         setSelectedPosition(coords);
         setShowForm(true);
         setIsAnnotationMode(false);
@@ -694,13 +796,13 @@ function Imageannotator(props) {
     // Area selection
     const handleMouseDown = useCallback((event) => {
         if (!isAnnotationMode || annotationType !== 'area' || !canAddAnnotations) return;
-        
+
         event.preventDefault();
         event.stopPropagation();
-        
+
         const coords = getRelativeCoordinates(event);
         if (!coords) return;
-        
+
         setStartPoint(coords);
         setIsDrawing(true);
         setCurrentArea({
@@ -713,15 +815,15 @@ function Imageannotator(props) {
 
     const handleMouseMove = useCallback((event) => {
         if (!isDrawing || !startPoint) return;
-        
+
         event.preventDefault();
-        
+
         const coords = getRelativeCoordinates(event);
         if (!coords) return;
-        
+
         const width = coords.x - startPoint.x;
         const height = coords.y - startPoint.y;
-        
+
         setCurrentArea({
             x: width < 0 ? coords.x : startPoint.x,
             y: height < 0 ? coords.y : startPoint.y,
@@ -732,17 +834,17 @@ function Imageannotator(props) {
 
     const handleMouseUp = useCallback((event) => {
         if (!isDrawing || !currentArea) return;
-        
+
         event.preventDefault();
         setIsDrawing(false);
-        
+
         const minAreaSize = 1.0;
         if (currentArea.width > minAreaSize && currentArea.height > minAreaSize) {
             setSelectedArea(currentArea);
             setShowForm(true);
             setIsAnnotationMode(false);
         }
-        
+
         setStartPoint(null);
         setCurrentArea(null);
     }, [isDrawing, currentArea, widgetInstanceId]);
@@ -831,7 +933,7 @@ function Imageannotator(props) {
                     try {
                         const base64Data = reader.result.split(',')[1];
                         const uniqueFileId = `${widgetInstanceId}-${Date.now()}-${Math.random().toString(36).substr(2, 12)}`;
-                        
+
                         const processedFile = {
                             id: uniqueFileId,
                             name: file.name,
@@ -842,7 +944,7 @@ function Imageannotator(props) {
                             uploadedAt: new Date().toISOString(),
                             widgetInstanceId: widgetInstanceId
                         };
-                        
+
                         resolve(processedFile);
                     } catch (error) {
                         reject(error);
@@ -861,15 +963,15 @@ function Imageannotator(props) {
     const handleFileUpload = useCallback(async (event) => {
         event.preventDefault();
         event.stopPropagation();
-        
+
         const files = Array.from(event.target.files);
         if (files.length === 0) return;
-        
+
         setIsUploading(true);
-        
+
         try {
             const uploadedFileData = [];
-            
+
             for (const file of files) {
                 try {
                     const processedFile = await uploadFileLocally(file);
@@ -878,7 +980,7 @@ function Imageannotator(props) {
                     console.error(`❌ [Widget ${widgetInstanceId}] Failed to process ${file.name}:`, fileError);
                 }
             }
-            
+
             if (uploadedFileData.length > 0) {
                 setUploadedFiles(prev => [...prev, ...uploadedFileData]);
             }
@@ -908,7 +1010,7 @@ function Imageannotator(props) {
         setLoadingPreview(true);
         setPreviewFile(file);
         setShowFilePreview(true);
-        
+
         try {
             if (file.data) {
                 const binaryString = atob(file.data);
@@ -916,10 +1018,10 @@ function Imageannotator(props) {
                 for (let i = 0; i < binaryString.length; i++) {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
-                
+
                 const blob = new Blob([bytes], { type: file.type });
                 const blobUrl = URL.createObjectURL(blob);
-                
+
                 setPreviewFile(prev => ({
                     ...prev,
                     blobUrl: blobUrl
@@ -951,29 +1053,29 @@ function Imageannotator(props) {
     // Handle form submit
     const handleSubmit = useCallback((event) => {
         event.preventDefault();
-        
+
         if (isSubmitting || !canAddAnnotations) return;
-        
+
         const richTextHtml = richTextRef.current?.innerHTML || '';
         const richTextPlainText = richTextRef.current?.innerText?.trim() || '';
         const fallbackComment = comment.trim();
-        
+
         const finalComment = richTextPlainText || fallbackComment;
-        
+
         if (!finalComment) {
             alert('Please enter a comment before adding the annotation.');
             return;
         }
-        
+
         setIsSubmitting(true);
-        
+
         let updatedAnnotations;
-        
+
         if (editingAnnotation) {
-            updatedAnnotations = annotations.map(ann => 
-                ann.id === editingAnnotation.id 
-                    ? { 
-                        ...ann, 
+            updatedAnnotations = annotations.map(ann =>
+                ann.id === editingAnnotation.id
+                    ? {
+                        ...ann,
                         comment: finalComment,
                         richTextContent: richTextHtml,
                         referenceDoc: selectedReferenceDoc ? String(selectedReferenceDoc) : '',
@@ -1014,7 +1116,7 @@ function Imageannotator(props) {
         }
 
         saveAnnotations(updatedAnnotations);
-        
+
         setComment('');
         setSelectedReferenceDoc('');
         setSelectedReferenceDocName('');
@@ -1057,12 +1159,12 @@ function Imageannotator(props) {
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (!showAnnotationDropdown && !showReferenceDropdown) return;
-            
+
             const widgetContainer = containerRef.current;
             if (!widgetContainer) return;
-            
+
             const isClickInWidget = widgetContainer.contains(event.target);
-            
+
             if (showAnnotationDropdown) {
                 const annotationDropdown = event.target.closest(`[data-widget-id="${widgetInstanceId}"] .add-dropdown-container`);
                 if (!annotationDropdown && isClickInWidget) {
@@ -1071,7 +1173,7 @@ function Imageannotator(props) {
                     setShowAnnotationDropdown(false);
                 }
             }
-            
+
             if (showReferenceDropdown) {
                 const referenceDropdown = refDocDropdownRef.current;
                 if (referenceDropdown && !referenceDropdown.contains(event.target)) {
@@ -1079,7 +1181,7 @@ function Imageannotator(props) {
                 }
             }
         };
-        
+
         if (showAnnotationDropdown || showReferenceDropdown) {
             document.addEventListener('mousedown', handleClickOutside, true);
             return () => {
@@ -1103,16 +1205,16 @@ function Imageannotator(props) {
 
     // Get truncated text for annotations
     const getTruncatedText = useCallback((annotation) => {
-        const plainText = annotation.richTextContent ? 
-            annotation.richTextContent.replace(/<[^>]*>/g, '') : 
+        const plainText = annotation.richTextContent ?
+            annotation.richTextContent.replace(/<[^>]*>/g, '') :
             annotation.comment;
-        
-        const truncated = plainText.length > MAX_COMMENT_LENGTH ? 
-            plainText.substring(0, MAX_COMMENT_LENGTH) + '...' : 
+
+        const truncated = plainText.length > MAX_COMMENT_LENGTH ?
+            plainText.substring(0, MAX_COMMENT_LENGTH) + '...' :
             plainText;
-            
-        return annotation.richTextContent ? 
-            `<p>${truncated}</p>` : 
+
+        return annotation.richTextContent ?
+            `<p>${truncated}</p>` :
             truncated;
     }, []);
 
@@ -1133,12 +1235,12 @@ function Imageannotator(props) {
     // Handle edit annotation
     const handleEditAnnotation = useCallback((annotation, event) => {
         if (!canAddAnnotations || !canEditAnnotation(annotation)) return;
-        
+
         event.stopPropagation();
-        
+
         setEditingAnnotation(annotation);
         setComment(annotation.comment);
-        
+
         if (annotation.referenceDoc) {
             setSelectedReferenceDoc(String(annotation.referenceDoc));
             const refDoc = referenceDocList.find(doc => String(doc.id) === String(annotation.referenceDoc));
@@ -1147,41 +1249,42 @@ function Imageannotator(props) {
                 setReferenceSearchTerm(refDoc.name);
             }
         }
-        
+
         setUploadedFiles(annotation.uploadedFiles || []);
         setRichTextContent(annotation.richTextContent || '');
-        
+
         setTimeout(() => {
             if (richTextRef.current) {
                 richTextRef.current.innerHTML = annotation.richTextContent || annotation.comment;
             }
         }, 100);
-        
+
         setShowForm(true);
     }, [canAddAnnotations, canEditAnnotation, referenceDocList, widgetInstanceId]);
 
     // Handle delete
     const handleDelete = useCallback((annotationId, event) => {
         if (!canAddAnnotations) return;
-        
+
         event.stopPropagation();
-        
+
         const annotation = annotations.find(ann => ann.id === annotationId);
         if (!annotation || !canEditAnnotation(annotation)) {
             alert('You can only delete your own annotations.');
             return;
         }
-        
+
         if (window.confirm('Are you sure you want to delete this annotation?')) {
             addDebugLog("=== DELETING IMAGE ANNOTATION ===");
-            
+
             const updated = annotations.filter(ann => ann.id !== annotationId);
-            
+            logEvent('INFO', 'Annotation deleted', `id: ${annotationId} | remaining: ${updated.length}`);
+
             setAnnotations(updated);
-            
+
             try {
                 const jsonString = JSON.stringify(updated);
-                
+
                 if (imageAnnotations && typeof imageAnnotations.setValue === 'function') {
                     imageAnnotations.setValue(jsonString);
                 } else if (imageAnnotations && imageAnnotations.value !== undefined) {
@@ -1190,41 +1293,41 @@ function Imageannotator(props) {
             } catch (error) {
                 addDebugLog(`❌ Error updating annotations after delete: ${error.message}`);
             }
-            
+
             if (onAnnotationDelete) {
                 executeMendixAction(onAnnotationDelete, 'onAnnotationDelete');
             }
-            
+
             if (activeAnnotationId === annotationId) {
                 setActiveAnnotationId(null);
             }
-            
+
             setExpandedAnnotations(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(annotationId);
                 return newSet;
             });
-            
+
             addDebugLog("=== END DELETING IMAGE ANNOTATION ===");
         }
-    }, [annotations, imageAnnotations, onAnnotationDelete, activeAnnotationId, canAddAnnotations, canEditAnnotation, addDebugLog, executeMendixAction, widgetInstanceId]);
+    }, [annotations, imageAnnotations, onAnnotationDelete, activeAnnotationId, canAddAnnotations, canEditAnnotation, addDebugLog, executeMendixAction, logEvent, widgetInstanceId]);
 
     // Utility functions
     const getFormattedTime = useCallback((dateString) => {
         const date = new Date(dateString);
         const now = new Date();
         const diffInSeconds = Math.floor((now - date) / 1000);
-        
+
         if (diffInSeconds < 86400) {
             if (diffInSeconds < 60) return 'Just now';
             if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
             return `${Math.floor(diffInSeconds / 3600)}h ago`;
         }
-        
-        return date.toLocaleDateString('en-US', { 
-            month: 'numeric', 
-            day: 'numeric', 
-            year: 'numeric' 
+
+        return date.toLocaleDateString('en-US', {
+            month: 'numeric',
+            day: 'numeric',
+            year: 'numeric'
         });
     }, []);
 
@@ -1242,7 +1345,7 @@ function Imageannotator(props) {
         if (!referenceSearchTerm.trim()) {
             return referenceDocList;
         }
-        return referenceDocList.filter(doc => 
+        return referenceDocList.filter(doc =>
             doc.name.toLowerCase().includes(referenceSearchTerm.toLowerCase())
         );
     }, [referenceDocList, referenceSearchTerm]);
@@ -1357,7 +1460,6 @@ function Imageannotator(props) {
                     }, reply.user.charAt(0).toUpperCase()),
                     createElement('div', { key: 'body', className: 'thread-reply-body' }, [
                         createElement('div', { key: 'bubble', className: 'thread-reply-bubble' }, [
-                            // "↩ replying to @user" context pill — only for nested replies
                             reply.replyToId !== reply.parentId && createElement('div', {
                                 key: 'context', className: 'thread-reply-context'
                             }, `↩ replying to ${reply.replyToUser}`),
@@ -1382,7 +1484,6 @@ function Imageannotator(props) {
             ])
         );
     }, [replyingToId, canReply, currentUser, getFormattedTime, renderReplyInput, handleSetReplyingTo]);
-
 
     // Loading spinner
     const renderLoadingSpinner = () => {
@@ -1525,7 +1626,7 @@ function Imageannotator(props) {
                             title: isMaximized ? 'Minimize (Press Esc)' : 'Maximize'
                         }, isMaximized ? 'Minimize' : 'Maximize')
                     ]),
-                    
+
                     createElement('div', {
                         key: 'header-right',
                         className: 'header-right'
@@ -1549,11 +1650,11 @@ function Imageannotator(props) {
                                     }
                                 }
                             }, [
-                                createElement('span', { key: 'text' }, 
+                                createElement('span', { key: 'text' },
                                     isAnnotationMode ? 'Cancel Annotation' : 'Add Annotation'),
                                 !isAnnotationMode && createElement('span', { key: 'chevron' }, '▼')
                             ].filter(Boolean)),
-                            
+
                             showAnnotationDropdown && createElement('div', {
                                 key: 'annotation-dropdown',
                                 className: 'annotation-dropdown-menu',
@@ -1567,7 +1668,7 @@ function Imageannotator(props) {
                                         handleSelectPoint();
                                     }
                                 }, 'Select Point'),
-                                
+
                                 createElement('button', {
                                     key: 'select-area',
                                     className: 'dropdown-menu-item',
@@ -1580,7 +1681,7 @@ function Imageannotator(props) {
                         ]) : null
                     ].filter(Boolean))
                 ]),
-                
+
                 // Image scroll container
                 createElement('div', {
                     key: 'image-container',
@@ -1638,7 +1739,7 @@ function Imageannotator(props) {
                                     padding: 0
                                 }
                             }),
-                            
+
                             // Drawing area (while dragging)
                             currentArea && createElement('div', {
                                 key: 'current-area',
@@ -1655,13 +1756,13 @@ function Imageannotator(props) {
                                     zIndex: 10
                                 }
                             }),
-                            
+
                             // ── Human annotation markers ────────────────────
                             ...getSortedAnnotations().map((annotation) => {
                                 const isActive = activeAnnotationId === annotation.id;
                                 const annotationNumber = getAnnotationNumber(annotation.id);
                                 const positionStyle = getAnnotationPositionStyle(annotation);
-                                
+
                                 if (annotation.type === 'area') {
                                     return createElement('div', {
                                         key: annotation.id,
@@ -1721,7 +1822,6 @@ function Imageannotator(props) {
                             }),
 
                             // ── AI annotation bounding boxes ─────────────────
-                            // Only rendered when isAI = true
                             ...(isAI ? aiAnnotations.map((annotation) => {
                                 const isActive = activeAnnotationId === annotation.id;
                                 return createElement('div', {
@@ -1763,7 +1863,7 @@ function Imageannotator(props) {
                     ])
                 ])
             ]),
-            
+
             // ── SIDEBAR ─────────────────────────────────────────
             createElement('div', {
                 key: 'annotations-sidebar',
@@ -1812,235 +1912,231 @@ function Imageannotator(props) {
                     // ── Human tab content ────────────────────────
                     activeTab === 'human' ? (
                         annotations.length > 0 ?
-                        getSortedAnnotations().map((annotation) => {
-                            const isActive = activeAnnotationId === annotation.id;
-                            const annotationNumber = getAnnotationNumber(annotation.id);
-                            const isExpanded = expandedAnnotations.has(annotation.id);
-                            const replyCount = getReplyCount(annotation);
-                            
-                            return createElement('div', {
-                                key: annotation.id,
-                                className: `annotation-item ${isActive ? 'selected' : ''}`,
-                                onClick: () => handleListClick(annotation),
-                                title: 'Click to navigate to annotation position',
-                                style: { cursor: 'pointer' }
-                            }, [
-                                // Header
-                                createElement('div', {
-                                    key: 'annotation-header',
-                                    className: 'annotation-item-header'
+                            getSortedAnnotations().map((annotation) => {
+                                const isActive = activeAnnotationId === annotation.id;
+                                const annotationNumber = getAnnotationNumber(annotation.id);
+                                const isExpanded = expandedAnnotations.has(annotation.id);
+                                const replyCount = getReplyCount(annotation);
+
+                                return createElement('div', {
+                                    key: annotation.id,
+                                    className: `annotation-item ${isActive ? 'selected' : ''}`,
+                                    onClick: () => handleListClick(annotation),
+                                    title: 'Click to navigate to annotation position',
+                                    style: { cursor: 'pointer' }
                                 }, [
+                                    // Header
                                     createElement('div', {
-                                        key: 'title-section',
-                                        className: 'title-section'
+                                        key: 'annotation-header',
+                                        className: 'annotation-item-header'
+                                    }, [
+                                        createElement('div', {
+                                            key: 'title-section',
+                                            className: 'title-section'
+                                        }, [
+                                            createElement('span', {
+                                                key: 'annotation-number',
+                                                className: 'annotation-number'
+                                            }, annotationNumber),
+                                            createElement('span', {
+                                                key: 'annotation-type',
+                                                className: 'annotation-type'
+                                            }, annotation.type === 'area' ? '🟧' : '📍'),
+                                            annotation.role && createElement('span', {
+                                                key: 'role-badge',
+                                                style: {
+                                                    backgroundColor: '#eff6ff',
+                                                    color: '#1d4ed8',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '11px',
+                                                    fontWeight: '600'
+                                                }
+                                            }, annotation.role),
+                                            createElement('span', {
+                                                key: 'navigation-hint',
+                                                className: 'navigation-hint',
+                                                style: { fontSize: '10px', color: '#6b7280', marginLeft: '4px' }
+                                            }, '🧭')
+                                        ]),
+
+                                        (canAddAnnotations && canEditAnnotation(annotation)) ? createElement('div', {
+                                            key: 'action-buttons',
+                                            className: 'action-buttons'
+                                        }, [
+                                            createElement('button', {
+                                                key: 'edit-btn',
+                                                className: 'action-btn edit-btn',
+                                                onClick: (e) => handleEditAnnotation(annotation, e),
+                                                title: 'Edit annotation'
+                                            }, '✏'),
+                                            createElement('button', {
+                                                key: 'delete-btn',
+                                                className: 'action-btn delete-btn',
+                                                onClick: (e) => handleDelete(annotation.id, e),
+                                                title: 'Delete annotation'
+                                            }, '🗑')
+                                        ]) : null
+                                    ]),
+
+                                    // Content
+                                    createElement('div', {
+                                        key: 'annotation-content',
+                                        className: 'annotation-content'
+                                    }, [
+                                        annotation.richTextContent ?
+                                            createElement('div', {
+                                                key: 'rich-text',
+                                                className: 'annotation-rich-content',
+                                                dangerouslySetInnerHTML: {
+                                                    __html: isExpanded ?
+                                                        annotation.richTextContent :
+                                                        getTruncatedText(annotation)
+                                                }
+                                            }) :
+                                            createElement('p', {
+                                                key: 'plain-text',
+                                                className: 'annotation-text'
+                                            }, isExpanded ?
+                                                annotation.comment :
+                                                getTruncatedText(annotation)),
+
+                                        createElement('button', {
+                                            key: 'read-more-btn',
+                                            className: 'read-more-btn',
+                                            onClick: (e) => {
+                                                e.stopPropagation();
+                                                toggleAnnotationExpansion(annotation.id);
+                                            }
+                                        }, isExpanded ? 'Read Less' : 'Read More'),
+
+                                        isExpanded && [
+                                            annotation.uploadedFiles && annotation.uploadedFiles.length > 0 &&
+                                            createElement('div', {
+                                                key: 'files',
+                                                className: 'annotation-files'
+                                            }, [
+                                                createElement('div', {
+                                                    key: 'files-title',
+                                                    className: 'annotation-files-title'
+                                                }, 'Files:'),
+                                                ...annotation.uploadedFiles.map(file =>
+                                                    createElement('div', {
+                                                        key: file.id,
+                                                        className: 'annotation-file-item clickable-file',
+                                                        onClick: (e) => {
+                                                            e.stopPropagation();
+                                                            handlePreviewFile(file);
+                                                        },
+                                                        title: 'Click to preview file'
+                                                    }, `📄 ${file.name}`)
+                                                )
+                                            ]),
+
+                                            annotation.referenceDoc && createElement('div', {
+                                                key: 'reference-doc',
+                                                className: 'annotation-reference-doc'
+                                            }, [
+                                                createElement('div', {
+                                                    key: 'ref-title',
+                                                    className: 'annotation-files-title'
+                                                }, 'Reference Document:'),
+                                                createElement('div', {
+                                                    key: 'ref-content',
+                                                    className: 'clickable-file reference-doc-item',
+                                                    onClick: (e) => {
+                                                        e.stopPropagation();
+                                                        const doc = referenceDocList.find(d => String(d.id) === String(annotation.referenceDoc));
+                                                        if (doc && doc.link) {
+                                                            window.open(doc.link, '_blank');
+                                                        }
+                                                    },
+                                                    title: 'Click to view reference document'
+                                                }, (() => {
+                                                    const refDoc = referenceDocList.find(doc => String(doc.id) === String(annotation.referenceDoc));
+                                                    return refDoc ? `📄 ${refDoc.name}` : `📄 Document ID: ${annotation.referenceDoc}`;
+                                                })())
+                                            ])
+                                        ]
+                                    ]),
+
+                                    // Footer
+                                    createElement('div', {
+                                        key: 'annotation-footer',
+                                        className: 'annotation-footer'
                                     }, [
                                         createElement('span', {
-                                            key: 'annotation-number',
-                                            className: 'annotation-number'
-                                        }, annotationNumber),
-                                        createElement('span', {
-                                            key: 'annotation-type',
-                                            className: 'annotation-type'
-                                        }, annotation.type === 'area' ? '🟧' : '📍'),
-                                        annotation.role && createElement('span', {
-                                            key: 'role-badge',
+                                            key: 'author',
+                                            className: 'author',
                                             style: {
-                                                backgroundColor: '#eff6ff',
-                                                color: '#1d4ed8',
-                                                padding: '2px 8px',
-                                                borderRadius: '4px',
+                                                color: canEditAnnotation(annotation) ? '#10B981' : '#6B7280',
+                                                fontWeight: canEditAnnotation(annotation) ? '600' : '400'
+                                            }
+                                        }, `${annotation.user}${canEditAnnotation(annotation) ? ' (You)' : ''}`),
+                                        annotation.role && createElement('span', {
+                                            key: 'role-footer',
+                                            style: {
                                                 fontSize: '11px',
-                                                fontWeight: '600'
+                                                color: '#1D4ED8',
+                                                fontWeight: '500',
+                                                backgroundColor: '#EFF6FF',
+                                                padding: '1px 6px',
+                                                borderRadius: '4px'
                                             }
                                         }, annotation.role),
                                         createElement('span', {
-                                            key: 'navigation-hint',
-                                            className: 'navigation-hint',
-                                            style: { fontSize: '10px', color: '#6b7280', marginLeft: '4px' }
-                                        }, '🧭')
+                                            key: 'date',
+                                            className: 'date'
+                                        }, getFormattedTime(annotation.createdAt))
                                     ]),
-                                    
-                                    (canAddAnnotations && canEditAnnotation(annotation)) ? createElement('div', {
-                                        key: 'action-buttons',
-                                        className: 'action-buttons'
+
+                                    // Reply button + inline thread
+                                    canReply && createElement('div', {
+                                        key: 'reply-section',
+                                        className: 'annotation-reply-section',
+                                        onClick: e => e.stopPropagation()
                                     }, [
                                         createElement('button', {
-                                            key: 'edit-btn',
-                                            className: 'action-btn edit-btn',
-                                            onClick: (e) => handleEditAnnotation(annotation, e),
-                                            title: 'Edit annotation'
-                                        }, '✏'),
-                                        createElement('button', {
-                                            key: 'delete-btn',
-                                            className: 'action-btn delete-btn',
-                                            onClick: (e) => handleDelete(annotation.id, e),
-                                            title: 'Delete annotation'
-                                        }, '🗑')
-                                    ]) : null
-                                ]),
-                                
-                                // Content
-                                createElement('div', {
-                                    key: 'annotation-content',
-                                    className: 'annotation-content'
-                                }, [
-                                    annotation.richTextContent ? 
-                                        createElement('div', {
-                                            key: 'rich-text',
-                                            className: 'annotation-rich-content',
-                                            dangerouslySetInnerHTML: { 
-                                                __html: isExpanded ? 
-                                                    annotation.richTextContent : 
-                                                    getTruncatedText(annotation)
-                                            }
-                                        }) : 
-                                        createElement('p', {
-                                            key: 'plain-text',
-                                            className: 'annotation-text'
-                                        }, isExpanded ? 
-                                            annotation.comment : 
-                                            getTruncatedText(annotation)),
-                                    
-                                    createElement('button', {
-                                        key: 'read-more-btn',
-                                        className: 'read-more-btn',
-                                        onClick: (e) => {
-                                            e.stopPropagation();
-                                            toggleAnnotationExpansion(annotation.id);
-                                        }
-                                    }, isExpanded ? 'Read Less' : 'Read More'),
-                                    
-                                    isExpanded && [
-                                        annotation.uploadedFiles && annotation.uploadedFiles.length > 0 && 
-                                        createElement('div', {
-                                            key: 'files',
-                                            className: 'annotation-files'
+                                            key: 'toggle-thread-btn',
+                                            className: `annotation-reply-btn${openThreadId === annotation.id ? ' annotation-reply-btn--active' : ''}`,
+                                            onClick: e => handleToggleThread(annotation, e)
                                         }, [
-                                            createElement('div', {
-                                                key: 'files-title',
-                                                className: 'annotation-files-title'
-                                            }, 'Files:'),
-                                            ...annotation.uploadedFiles.map(file => 
-                                                createElement('div', {
-                                                    key: file.id,
-                                                    className: 'annotation-file-item clickable-file',
-                                                    onClick: (e) => {
-                                                        e.stopPropagation();
-                                                        handlePreviewFile(file);
-                                                    },
-                                                    title: 'Click to preview file'
-                                                }, `📄 ${file.name}`)
+                                            createElement('span', { key: 'icon', className: 'annotation-reply-btn-icon' }, '💬'),
+                                            createElement('span', { key: 'label' },
+                                                replyCount > 0
+                                                    ? `${replyCount} ${replyCount === 1 ? 'Reply' : 'Replies'}`
+                                                    : 'Reply'
+                                            ),
+                                            createElement('span', { key: 'chevron', className: 'annotation-reply-chevron' },
+                                                openThreadId === annotation.id ? ' ▲' : ' ▼'
                                             )
                                         ]),
-                                    
-                                        annotation.referenceDoc && createElement('div', {
-                                            key: 'reference-doc',
-                                            className: 'annotation-reference-doc'
+
+                                        openThreadId === annotation.id && createElement('div', {
+                                            key: 'inline-thread',
+                                            className: 'inline-thread'
                                         }, [
-                                            createElement('div', {
-                                                key: 'ref-title',
-                                                className: 'annotation-files-title'
-                                            }, 'Reference Document:'),
-                                            createElement('div', {
-                                                key: 'ref-content',
-                                                className: 'clickable-file reference-doc-item',
-                                                onClick: (e) => {
-                                                    e.stopPropagation();
-                                                    const doc = referenceDocList.find(d => String(d.id) === String(annotation.referenceDoc));
-                                                    if (doc && doc.link) {
-                                                        window.open(doc.link, '_blank');
-                                                    }
-                                                },
-                                                title: 'Click to view reference document'
-                                            }, (() => {
-                                                const refDoc = referenceDocList.find(doc => String(doc.id) === String(annotation.referenceDoc));
-                                                return refDoc ? `📄 ${refDoc.name}` : `📄 Document ID: ${annotation.referenceDoc}`;
-                                            })())
-                                        ])
-                                    ]
-                                ]),
-                                
-                                // Footer
-                                createElement('div', {
-                                    key: 'annotation-footer',
-                                    className: 'annotation-footer'
-                                }, [
-                                    createElement('span', {
-                                        key: 'author',
-                                        className: 'author',
-                                        style: {
-                                            color: canEditAnnotation(annotation) ? '#10B981' : '#6B7280',
-                                            fontWeight: canEditAnnotation(annotation) ? '600' : '400'
-                                        }
-                                    }, `${annotation.user}${canEditAnnotation(annotation) ? ' (You)' : ''}`),
-                                    annotation.role && createElement('span', {
-                                        key: 'role-footer',
-                                        style: {
-                                            fontSize: '11px',
-                                            color: '#1D4ED8',
-                                            fontWeight: '500',
-                                            backgroundColor: '#EFF6FF',
-                                            padding: '1px 6px',
-                                            borderRadius: '4px'
-                                        }
-                                    }, annotation.role),
-                                    createElement('span', {
-                                        key: 'date',
-                                        className: 'date'
-                                    }, getFormattedTime(annotation.createdAt))
-                                ]),
+                                            (annotation.replies || []).length > 0 && createElement('div', {
+                                                key: 'replies',
+                                                className: 'inline-thread-replies'
+                                            }, renderThreadedReplies(annotation.replies, annotation.id, 0)),
 
-                                // Reply button + inline thread — human annotations only
-                                canReply && createElement('div', {
-                                    key: 'reply-section',
-                                    className: 'annotation-reply-section',
-                                    onClick: e => e.stopPropagation()
-                                }, [
-                                    // Reply toggle button
-                                    createElement('button', {
-                                        key: 'toggle-thread-btn',
-                                        className: `annotation-reply-btn${openThreadId === annotation.id ? ' annotation-reply-btn--active' : ''}`,
-                                        onClick: e => handleToggleThread(annotation, e)
-                                    }, [
-                                        createElement('span', { key: 'icon', className: 'annotation-reply-btn-icon' }, '💬'),
-                                        createElement('span', { key: 'label' },
-                                            replyCount > 0
-                                                ? `${replyCount} ${replyCount === 1 ? 'Reply' : 'Replies'}`
-                                                : 'Reply'
-                                        ),
-                                        createElement('span', { key: 'chevron', className: 'annotation-reply-chevron' },
-                                            openThreadId === annotation.id ? ' ▲' : ' ▼'
-                                        )
-                                    ]),
-
-                                    // Inline thread — shown when this annotation's thread is open
-                                    openThreadId === annotation.id && createElement('div', {
-                                        key: 'inline-thread',
-                                        className: 'inline-thread'
-                                    }, [
-                                        // Existing replies
-                                        (annotation.replies || []).length > 0 && createElement('div', {
-                                            key: 'replies',
-                                            className: 'inline-thread-replies'
-                                        }, renderThreadedReplies(annotation.replies, annotation.id, 0)),
-
-                                        // Reply to root composer / button
-                                        createElement('div', { key: 'composer', className: 'inline-thread-composer' }, [
-                                            replyingToId !== annotation.id
-                                                ? createElement('button', {
-                                                    key: 'reply-root-btn',
-                                                    className: 'thread-reply-to-root-btn',
-                                                    onClick: () => handleSetReplyingTo(annotation.id)
-                                                }, '↩ Write a reply…')
-                                                : renderReplyInput(annotation.id)
+                                            createElement('div', { key: 'composer', className: 'inline-thread-composer' }, [
+                                                replyingToId !== annotation.id
+                                                    ? createElement('button', {
+                                                        key: 'reply-root-btn',
+                                                        className: 'thread-reply-to-root-btn',
+                                                        onClick: () => handleSetReplyingTo(annotation.id)
+                                                    }, '↩ Write a reply…')
+                                                    : renderReplyInput(annotation.id)
+                                            ])
                                         ])
                                     ])
-                                ])
-                            ]);
-                        }) :
-                        createElement('div', {
-                            className: 'no-annotations'
-                        }, 'No annotations yet - Click "Add Annotation" to start ✨')
+                                ]);
+                            }) :
+                            createElement('div', {
+                                className: 'no-annotations'
+                            }, 'No annotations yet - Click "Add Annotation" to start ✨')
                     ) :
 
                     // ── AI tab content ───────────────────────────
@@ -2057,7 +2153,6 @@ function Imageannotator(props) {
                                     borderLeft: isActive ? `3px solid ${AI_ANNOTATION_COLOR}` : '3px solid transparent'
                                 }
                             }, [
-                                // AI annotation header
                                 createElement('div', {
                                     key: 'ai-header',
                                     className: 'annotation-item-header'
@@ -2085,7 +2180,6 @@ function Imageannotator(props) {
                                     }, annotation.role)
                                 ]),
 
-                                // AI annotation content
                                 createElement('div', {
                                     key: 'ai-content',
                                     className: 'annotation-content'
@@ -2104,7 +2198,6 @@ function Imageannotator(props) {
                                     }, '🧭 Click to navigate')
                                 ]),
 
-                                // AI annotation footer
                                 createElement('div', {
                                     key: 'ai-footer',
                                     className: 'annotation-footer'
@@ -2134,7 +2227,7 @@ function Imageannotator(props) {
                 )
             ])
         ]),
-        
+
         // ── FORM MODAL ───────────────────────────────────────────
         showForm && createElement(AnnotationPortal, null, createElement('div', {
             key: 'form-overlay',
@@ -2222,7 +2315,7 @@ function Imageannotator(props) {
                         }
                     }, '×')
                 ]),
-                
+
                 // Form body
                 createElement('div', {
                     key: 'form-body',
@@ -2237,9 +2330,7 @@ function Imageannotator(props) {
                     createElement('div', {
                         key: 'richtext-section',
                         className: 'form-section',
-                        style: {
-                            marginBottom: '24px'
-                        }
+                        style: { marginBottom: '24px' }
                     }, [
                         createElement('div', {
                             key: 'richtext-toolbar',
@@ -2257,79 +2348,27 @@ function Imageannotator(props) {
                             }
                         }, [
                             createElement('button', {
-                                key: 'bold-btn',
-                                className: 'richtext-btn',
-                                type: 'button',
-                                onClick: () => applyRichTextFormat('bold'),
-                                title: 'Bold',
-                                style: {
-                                    padding: '6px 10px',
-                                    border: '1px solid #d1d5db',
-                                    backgroundColor: 'white',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    transition: 'all 0.2s ease',
-                                    color: '#374151'
-                                }
+                                key: 'bold-btn', className: 'richtext-btn', type: 'button',
+                                onClick: () => applyRichTextFormat('bold'), title: 'Bold',
+                                style: { padding: '6px 10px', border: '1px solid #d1d5db', backgroundColor: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', transition: 'all 0.2s ease', color: '#374151' }
                             }, 'B'),
                             createElement('button', {
-                                key: 'italic-btn',
-                                className: 'richtext-btn',
-                                type: 'button',
-                                onClick: () => applyRichTextFormat('italic'),
-                                title: 'Italic',
-                                style: {
-                                    padding: '6px 10px',
-                                    border: '1px solid #d1d5db',
-                                    backgroundColor: 'white',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    transition: 'all 0.2s ease',
-                                    color: '#374151'
-                                }
+                                key: 'italic-btn', className: 'richtext-btn', type: 'button',
+                                onClick: () => applyRichTextFormat('italic'), title: 'Italic',
+                                style: { padding: '6px 10px', border: '1px solid #d1d5db', backgroundColor: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', transition: 'all 0.2s ease', color: '#374151' }
                             }, 'I'),
                             createElement('button', {
-                                key: 'underline-btn',
-                                className: 'richtext-btn',
-                                type: 'button',
-                                onClick: () => applyRichTextFormat('underline'),
-                                title: 'Underline',
-                                style: {
-                                    padding: '6px 10px',
-                                    border: '1px solid #d1d5db',
-                                    backgroundColor: 'white',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    transition: 'all 0.2s ease',
-                                    color: '#374151'
-                                }
+                                key: 'underline-btn', className: 'richtext-btn', type: 'button',
+                                onClick: () => applyRichTextFormat('underline'), title: 'Underline',
+                                style: { padding: '6px 10px', border: '1px solid #d1d5db', backgroundColor: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', transition: 'all 0.2s ease', color: '#374151' }
                             }, 'U'),
                             createElement('button', {
-                                key: 'list-btn',
-                                className: 'richtext-btn',
-                                type: 'button',
-                                onClick: () => applyRichTextFormat('insertUnorderedList'),
-                                title: 'Bullet List',
-                                style: {
-                                    padding: '6px 10px',
-                                    border: '1px solid #d1d5db',
-                                    backgroundColor: 'white',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    transition: 'all 0.2s ease',
-                                    color: '#374151'
-                                }
+                                key: 'list-btn', className: 'richtext-btn', type: 'button',
+                                onClick: () => applyRichTextFormat('insertUnorderedList'), title: 'Bullet List',
+                                style: { padding: '6px 10px', border: '1px solid #d1d5db', backgroundColor: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', transition: 'all 0.2s ease', color: '#374151' }
                             }, '•')
                         ]),
-                        
+
                         createElement('div', {
                             key: 'richtext-editor',
                             ref: richTextRef,
@@ -2338,54 +2377,31 @@ function Imageannotator(props) {
                             'data-placeholder': 'Enter your comment with formatting...',
                             onInput: handleRichTextInput,
                             style: {
-                                minHeight: '120px',
-                                maxHeight: '200px',
-                                overflowY: 'auto',
-                                padding: '16px',
-                                border: '1px solid #e5e7eb',
-                                borderTop: 'none',
-                                borderRadius: '0 0 6px 6px',
-                                backgroundColor: 'white',
-                                fontSize: '14px',
-                                lineHeight: '1.6',
-                                outline: 'none',
-                                fontFamily: 'inherit',
-                                transition: 'border-color 0.2s ease',
-                                boxSizing: 'border-box',
-                                width: '100%',
-                                color: '#374151',
-                                display: 'block',
-                                position: 'relative'
+                                minHeight: '120px', maxHeight: '200px', overflowY: 'auto',
+                                padding: '16px', border: '1px solid #e5e7eb', borderTop: 'none',
+                                borderRadius: '0 0 6px 6px', backgroundColor: 'white',
+                                fontSize: '14px', lineHeight: '1.6', outline: 'none',
+                                fontFamily: 'inherit', transition: 'border-color 0.2s ease',
+                                boxSizing: 'border-box', width: '100%', color: '#374151',
+                                display: 'block', position: 'relative'
                             }
                         })
                     ]),
-                    
+
                     // File upload section
                     createElement('div', {
                         key: 'file-section',
                         className: 'form-section',
-                        style: {
-                            marginBottom: '24px'
-                        }
+                        style: { marginBottom: '24px' }
                     }, [
                         createElement('label', {
-                            key: 'file-label',
-                            className: 'form-section-label',
-                            style: {
-                                display: 'block',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                color: '#374151',
-                                marginBottom: '8px'
-                            }
+                            key: 'file-label', className: 'form-section-label',
+                            style: { display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }
                         }, 'Attach Files:'),
-                        
+
                         createElement('div', {
-                            key: 'file-upload-area',
-                            className: 'file-upload-area',
-                            style: {
-                                marginBottom: '16px'
-                            }
+                            key: 'file-upload-area', className: 'file-upload-area',
+                            style: { marginBottom: '16px' }
                         }, [
                             createElement('input', {
                                 key: `file-input-${widgetInstanceId}`,
@@ -2400,551 +2416,195 @@ function Imageannotator(props) {
                                 style: { display: 'none' },
                                 onClick: (e) => e.stopPropagation()
                             }),
-                            
+
                             createElement('button', {
                                 key: 'file-upload-trigger',
                                 type: 'button',
-                                onClick: (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    triggerFileInput();
-                                },
+                                onClick: (e) => { e.preventDefault(); e.stopPropagation(); triggerFileInput(); },
                                 className: 'file-upload-btn-small',
                                 disabled: isUploading,
-                                style: { 
+                                style: {
                                     cursor: isUploading ? 'not-allowed' : 'pointer',
                                     opacity: isUploading ? 0.6 : 1,
-                                    padding: '8px 16px',
-                                    fontSize: '14px',
-                                    display: 'inline-block',
-                                    backgroundColor: '#f3f4f6',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '6px'
+                                    padding: '8px 16px', fontSize: '14px', display: 'inline-block',
+                                    backgroundColor: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '6px'
                                 }
                             }, isUploading ? 'Processing...' : '📎 Choose Files')
                         ]),
-                        
-                        // Uploaded files display
+
                         uploadedFiles.length > 0 && createElement('div', {
-                            key: 'uploaded-files',
-                            className: 'uploaded-files-list',
-                            style: {
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px',
-                                marginTop: '12px'
-                            }
-                        }, uploadedFiles.map(file => 
+                            key: 'uploaded-files', className: 'uploaded-files-list',
+                            style: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }
+                        }, uploadedFiles.map(file =>
                             createElement('div', {
-                                key: file.id,
-                                className: 'uploaded-file-item',
-                                style: {
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    padding: '8px 12px',
-                                    backgroundColor: '#f3f4f6',
-                                    borderRadius: '6px',
-                                    border: '1px solid #e5e7eb'
-                                }
+                                key: file.id, className: 'uploaded-file-item',
+                                style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#f3f4f6', borderRadius: '6px', border: '1px solid #e5e7eb' }
                             }, [
-                                createElement('span', {
-                                    key: 'file-icon',
-                                    className: 'file-icon',
-                                    style: {
-                                        fontSize: '14px',
-                                        marginRight: '8px'
-                                    }
-                                }, '📄'),
-                                createElement('span', {
-                                    key: 'file-name',
-                                    className: 'file-name',
-                                    style: {
-                                        fontSize: '14px',
-                                        fontWeight: '500',
-                                        color: '#1f2937',
-                                        marginRight: '8px',
-                                        flex: 1,
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap'
-                                    }
-                                }, file.name),
-                                createElement('span', {
-                                    key: 'file-size',
-                                    className: 'file-size',
-                                    style: {
-                                        fontSize: '12px',
-                                        color: '#6b7280',
-                                        marginRight: '8px'
-                                    }
-                                }, formatFileSize(file.size)),
+                                createElement('span', { key: 'file-icon', style: { fontSize: '14px', marginRight: '8px' } }, '📄'),
+                                createElement('span', { key: 'file-name', style: { fontSize: '14px', fontWeight: '500', color: '#1f2937', marginRight: '8px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, file.name),
+                                createElement('span', { key: 'file-size', style: { fontSize: '12px', color: '#6b7280', marginRight: '8px' } }, formatFileSize(file.size)),
                                 createElement('button', {
-                                    key: 'remove-btn',
-                                    className: 'file-remove-btn',
-                                    onClick: () => removeFile(file.id),
-                                    title: 'Remove file',
-                                    style: {
-                                        width: '24px',
-                                        height: '24px',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        backgroundColor: '#ef4444',
-                                        color: 'white',
-                                        cursor: 'pointer',
-                                        fontSize: '14px',
-                                        fontWeight: '600',
-                                        transition: 'all 0.2s ease',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
-                                    }
+                                    key: 'remove-btn', onClick: () => removeFile(file.id), title: 'Remove file',
+                                    style: { width: '24px', height: '24px', border: 'none', borderRadius: '4px', backgroundColor: '#ef4444', color: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: '600', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center' }
                                 }, '×')
                             ])
                         ))
                     ]),
-                    
+
                     // Reference document section
                     referenceDocList.length > 0 && createElement('div', {
                         key: 'reference-section',
                         className: 'comment-form-group',
-                        style: {
-                            marginBottom: '24px'
-                        }
+                        style: { marginBottom: '24px' }
                     }, [
                         createElement('label', {
-                            key: 'reference-label',
-                            className: 'comment-form-label',
-                            style: {
-                                display: 'block',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                color: '#374151',
-                                marginBottom: '8px'
-                            }
+                            key: 'reference-label', className: 'comment-form-label',
+                            style: { display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }
                         }, 'Tag Reference Document:'),
-                        
+
                         createElement('div', {
                             key: 'reference-search-container',
                             ref: refDocDropdownRef,
                             className: 'reference-search-container',
-                            style: {
-                                position: 'relative',
-                                width: '100%'
-                            }
+                            style: { position: 'relative', width: '100%' }
                         }, [
                             createElement('div', {
-                                key: 'search-input-wrapper',
-                                className: 'reference-search-input-wrapper',
-                                style: {
-                                    position: 'relative',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    width: '100%'
-                                }
+                                key: 'search-input-wrapper', className: 'reference-search-input-wrapper',
+                                style: { position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }
                             }, [
                                 createElement('input', {
-                                    key: 'reference-search-input',
-                                    ref: searchInputRef,
-                                    type: 'text',
+                                    key: 'reference-search-input', ref: searchInputRef, type: 'text',
                                     className: 'reference-search-input',
                                     placeholder: 'Search and select a reference document...',
                                     value: referenceSearchTerm,
                                     onChange: handleReferenceSearchChange,
                                     onFocus: handleReferenceSearchFocus,
-                                    style: {
-                                        width: '100%',
-                                        padding: '12px 16px',
-                                        paddingRight: '50px',
-                                        border: '2px solid #e5e7eb',
-                                        borderRadius: '8px',
-                                        fontSize: '14px',
-                                        outline: 'none',
-                                        fontFamily: 'inherit',
-                                        transition: 'all 0.2s ease',
-                                        boxSizing: 'border-box',
-                                        backgroundColor: 'white',
-                                        color: '#374151'
-                                    }
+                                    style: { width: '100%', padding: '12px 16px', paddingRight: '50px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', outline: 'none', fontFamily: 'inherit', transition: 'all 0.2s ease', boxSizing: 'border-box', backgroundColor: 'white', color: '#374151' }
                                 }),
-                                
+
                                 createElement('div', {
-                                    key: 'dropdown-arrow',
-                                    className: 'reference-dropdown-arrow',
+                                    key: 'dropdown-arrow', className: 'reference-dropdown-arrow',
                                     onClick: () => setShowReferenceDropdown(!showReferenceDropdown),
-                                    style: {
-                                        position: 'absolute',
-                                        right: '16px',
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
-                                        color: '#6b7280',
-                                        fontSize: '12px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s ease',
-                                        zIndex: 2,
-                                        padding: '4px',
-                                        borderRadius: '4px',
-                                        userSelect: 'none'
-                                    }
+                                    style: { position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#6b7280', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s ease', zIndex: 2, padding: '4px', borderRadius: '4px', userSelect: 'none' }
                                 }, showReferenceDropdown ? '▲' : '▼'),
-                                
+
                                 selectedReferenceDoc && createElement('button', {
-                                    key: 'clear-button',
-                                    type: 'button',
-                                    className: 'reference-clear-button',
-                                    onClick: clearReferenceSelection,
-                                    title: 'Clear selection',
-                                    style: {
-                                        position: 'absolute',
-                                        right: '35px',
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
-                                        width: '18px',
-                                        height: '18px',
-                                        border: 'none',
-                                        borderRadius: '50%',
-                                        backgroundColor: '#ef4444',
-                                        color: 'white',
-                                        fontSize: '12px',
-                                        fontWeight: 'bold',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        transition: 'all 0.2s ease',
-                                        zIndex: 3
-                                    }
+                                    key: 'clear-button', type: 'button', className: 'reference-clear-button',
+                                    onClick: clearReferenceSelection, title: 'Clear selection',
+                                    style: { position: 'absolute', right: '35px', top: '50%', transform: 'translateY(-50%)', width: '18px', height: '18px', border: 'none', borderRadius: '50%', backgroundColor: '#ef4444', color: 'white', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', zIndex: 3 }
                                 }, '×')
                             ]),
-                            
+
                             showReferenceDropdown && createElement('div', {
-                                key: 'reference-dropdown-menu',
-                                className: 'reference-dropdown-menu',
-                                style: {
-                                    position: 'absolute',
-                                    top: '100%',
-                                    left: 0,
-                                    right: 0,
-                                    backgroundColor: 'white',
-                                    border: '2px solid #e5e7eb',
-                                    borderTop: 'none',
-                                    borderRadius: '0 0 8px 8px',
-                                    boxShadow: '0 8px 25px -5px rgba(0, 0, 0, 0.1)',
-                                    zIndex: 1000,
-                                    maxHeight: '200px',
-                                    overflowY: 'auto',
-                                    marginTop: '-1px'
-                                }
-                            }, filteredReferenceDocuments().length > 0 ? 
+                                key: 'reference-dropdown-menu', className: 'reference-dropdown-menu',
+                                style: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'white', border: '2px solid #e5e7eb', borderTop: 'none', borderRadius: '0 0 8px 8px', boxShadow: '0 8px 25px -5px rgba(0, 0, 0, 0.1)', zIndex: 1000, maxHeight: '200px', overflowY: 'auto', marginTop: '-1px' }
+                            }, filteredReferenceDocuments().length > 0 ?
                                 filteredReferenceDocuments().map(doc =>
                                     createElement('div', {
-                                        key: doc.id,
-                                        className: 'reference-dropdown-item',
+                                        key: doc.id, className: 'reference-dropdown-item',
                                         onClick: () => handleReferenceDocSelect(doc),
-                                        style: {
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            padding: '12px 16px',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                            borderBottom: '1px solid #f3f4f6'
-                                        }
+                                        style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', cursor: 'pointer', transition: 'all 0.2s ease', borderBottom: '1px solid #f3f4f6' }
                                     }, [
-                                        createElement('div', {
-                                            key: 'doc-icon',
-                                            className: 'reference-doc-icon',
-                                            style: {
-                                                fontSize: '16px',
-                                                flexShrink: 0
-                                            }
-                                        }, '📄'),
-                                        createElement('div', {
-                                            key: 'doc-name',
-                                            className: 'reference-doc-name',
-                                            style: {
-                                                fontSize: '14px',
-                                                color: '#374151',
-                                                lineHeight: 1.4,
-                                                flex: 1,
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
-                                            }
-                                        }, doc.name)
+                                        createElement('div', { key: 'doc-icon', style: { fontSize: '16px', flexShrink: 0 } }, '📄'),
+                                        createElement('div', { key: 'doc-name', style: { fontSize: '14px', color: '#374151', lineHeight: 1.4, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, doc.name)
                                     ])
-                                ) : 
+                                ) :
                                 createElement('div', {
-                                    key: 'no-results',
-                                    className: 'reference-no-results',
-                                    style: {
-                                        padding: '16px',
-                                        textAlign: 'center',
-                                        color: '#9ca3af',
-                                        fontStyle: 'italic',
-                                        fontSize: '14px',
-                                        borderBottom: '1px solid #f3f4f6'
-                                    }
+                                    key: 'no-results', className: 'reference-no-results',
+                                    style: { padding: '16px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic', fontSize: '14px', borderBottom: '1px solid #f3f4f6' }
                                 }, 'No documents found')
                             )
                         ])
                     ]),
-                    
+
                     // User display
                     createElement('div', {
-                        key: 'user-display',
-                        className: 'user-display',
-                        style: {
-                            fontSize: '12px',
-                            color: '#6b7280',
-                            fontStyle: 'italic',
-                            marginTop: '16px',
-                            padding: '8px 12px',
-                            backgroundColor: '#f9fafb',
-                            borderRadius: '6px',
-                            border: '1px solid #e5e7eb'
-                        }
+                        key: 'user-display', className: 'user-display',
+                        style: { fontSize: '12px', color: '#6b7280', fontStyle: 'italic', marginTop: '16px', padding: '8px 12px', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }
                     }, `Creating annotation as: ${currentUser}`)
                 ]),
-                
+
                 // Form footer
                 createElement('div', {
-                    key: 'form-footer',
-                    className: 'img-annotation-form-footer',
-                    style: {
-                        padding: '16px 24px',
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        gap: '12px',
-                        borderTop: '1px solid #e2e8f0',
-                        backgroundColor: '#f8fafc',
-                        flexShrink: 0
-                    }
+                    key: 'form-footer', className: 'img-annotation-form-footer',
+                    style: { padding: '16px 24px', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', flexShrink: 0 }
                 }, [
                     createElement('button', {
-                        key: 'cancel-btn',
-                        className: 'btn btn-cancel',
-                        onClick: handleCancel,
-                        style: {
-                            padding: '10px 20px',
-                            borderRadius: '8px',
-                            fontSize: '14px',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                            border: 'none',
-                            transition: 'all 0.2s ease',
-                            fontFamily: 'inherit',
-                            backgroundColor: '#6b7280',
-                            color: 'white'
-                        }
+                        key: 'cancel-btn', className: 'btn btn-cancel', onClick: handleCancel,
+                        style: { padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', fontFamily: 'inherit', backgroundColor: '#6b7280', color: 'white' }
                     }, 'Cancel'),
                     createElement('button', {
-                        key: 'save-btn',
-                        className: 'btn btn-save',
-                        onClick: handleSubmit,
+                        key: 'save-btn', className: 'btn btn-save', onClick: handleSubmit,
                         disabled: !hasContent() || isSubmitting,
-                        style: {
-                            padding: '10px 20px',
-                            borderRadius: '8px',
-                            fontSize: '14px',
-                            fontWeight: '600',
-                            cursor: !hasContent() || isSubmitting ? 'not-allowed' : 'pointer',
-                            border: 'none',
-                            transition: 'all 0.2s ease',
-                            fontFamily: 'inherit',
-                            backgroundColor: '#3b82f6',
-                            color: 'white',
-                            opacity: !hasContent() || isSubmitting ? 0.6 : 1
-                        }
+                        style: { padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: !hasContent() || isSubmitting ? 'not-allowed' : 'pointer', border: 'none', transition: 'all 0.2s ease', fontFamily: 'inherit', backgroundColor: '#3b82f6', color: 'white', opacity: !hasContent() || isSubmitting ? 0.6 : 1 }
                     }, isSubmitting ? 'Saving...' : 'Save')
                 ])
             ])
         ])),
-        
+
         // ── FILE PREVIEW MODAL ───────────────────────────────────
         showFilePreview && previewFile && createElement(AnnotationPortal, null, createElement('div', {
             key: 'file-preview-overlay',
             className: 'img-file-preview-overlay',
             style: {
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: isMaximized ? 60000 : 20000,
-                backdropFilter: 'blur(4px)',
-                boxSizing: 'border-box'
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                zIndex: isMaximized ? 60000 : 20000, backdropFilter: 'blur(4px)', boxSizing: 'border-box'
             },
-            onClick: (e) => {
-                if (e.target === e.currentTarget) {
-                    handleCloseFilePreview();
-                }
-            }
+            onClick: (e) => { if (e.target === e.currentTarget) { handleCloseFilePreview(); } }
         }, [
             createElement('div', {
-                key: 'file-preview-modal',
-                className: 'img-file-preview-modal',
-                style: {
-                    backgroundColor: 'white',
-                    borderRadius: '16px',
-                    width: '90%',
-                    maxWidth: '800px',
-                    maxHeight: '90vh',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-                    animation: 'modalSlideIn 0.3s ease-out',
-                    position: 'relative'
-                }
+                key: 'file-preview-modal', className: 'img-file-preview-modal',
+                style: { backgroundColor: 'white', borderRadius: '16px', width: '90%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', animation: 'modalSlideIn 0.3s ease-out', position: 'relative' }
             }, [
                 createElement('div', {
-                    key: 'file-preview-header',
-                    className: 'img-file-preview-header',
-                    style: {
-                        padding: '20px 24px',
-                        borderBottom: '1px solid #e5e7eb',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexShrink: 0
-                    }
+                    key: 'file-preview-header', className: 'img-file-preview-header',
+                    style: { padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }
                 }, [
                     createElement('h3', {
-                        key: 'file-preview-title',
-                        className: 'img-file-preview-title',
-                        style: {
-                            margin: '0',
-                            fontSize: '18px',
-                            fontWeight: '600',
-                            color: '#1f2937',
-                            flex: 1,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            marginRight: '16px'
-                        }
+                        key: 'file-preview-title', className: 'img-file-preview-title',
+                        style: { margin: '0', fontSize: '18px', fontWeight: '600', color: '#1f2937', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '16px' }
                     }, previewFile.name),
                     createElement('button', {
-                        key: 'close-preview',
-                        className: 'img-file-preview-close',
-                        onClick: handleCloseFilePreview,
-                        style: {
-                            width: '32px',
-                            height: '32px',
-                            border: 'none',
-                            backgroundColor: '#f3f4f6',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '18px',
-                            color: '#6b7280',
-                            transition: 'all 0.2s ease'
-                        }
+                        key: 'close-preview', className: 'img-file-preview-close', onClick: handleCloseFilePreview,
+                        style: { width: '32px', height: '32px', border: 'none', backgroundColor: '#f3f4f6', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: '#6b7280', transition: 'all 0.2s ease' }
                     }, '×')
                 ]),
-                
+
                 createElement('div', {
-                    key: 'file-preview-content',
-                    className: 'img-file-preview-content',
-                    style: {
-                        flex: 1,
-                        padding: '24px',
-                        overflow: 'auto',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                    }
+                    key: 'file-preview-content', className: 'img-file-preview-content',
+                    style: { flex: 1, padding: '24px', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }
                 }, [
-                    loadingPreview ? 
+                    loadingPreview ?
                         createElement('div', {
-                            key: 'loading-preview',
-                            className: 'img-file-preview-loading',
-                            style: {
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: '40px',
-                                color: '#6b7280'
-                            }
+                            key: 'loading-preview', className: 'img-file-preview-loading',
+                            style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', color: '#6b7280' }
                         }, [
                             createElement('div', {
-                                key: 'spinner',
-                                className: 'loading-spinner',
-                                style: {
-                                    width: '40px',
-                                    height: '40px',
-                                    border: '3px solid #e3e3e3',
-                                    borderTop: '3px solid #3b82f6',
-                                    borderRadius: '50%',
-                                    animation: 'imageannotator-spin 1s linear infinite',
-                                    marginBottom: '16px'
-                                }
+                                key: 'spinner', className: 'loading-spinner',
+                                style: { width: '40px', height: '40px', border: '3px solid #e3e3e3', borderTop: '3px solid #3b82f6', borderRadius: '50%', animation: 'imageannotator-spin 1s linear infinite', marginBottom: '16px' }
                             }),
-                            createElement('p', {
-                                key: 'loading-text'
-                            }, 'Loading file...')
+                            createElement('p', { key: 'loading-text' }, 'Loading file...')
                         ]) :
-                        previewFile.blobUrl ? 
-                            (previewFile.type.startsWith('image/') ? 
+                        previewFile.blobUrl ?
+                            (previewFile.type.startsWith('image/') ?
                                 createElement('img', {
-                                    key: 'image-preview',
-                                    src: previewFile.blobUrl,
-                                    alt: previewFile.name,
+                                    key: 'image-preview', src: previewFile.blobUrl, alt: previewFile.name,
                                     className: 'img-file-preview-image',
-                                    style: {
-                                        maxWidth: '100%',
-                                        maxHeight: '100%',
-                                        objectFit: 'contain',
-                                        borderRadius: '8px',
-                                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-                                    }
+                                    style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)' }
                                 }) :
                                 createElement('div', {
-                                    key: 'download-preview',
-                                    className: 'img-file-preview-download',
-                                    style: {
-                                        textAlign: 'center',
-                                        padding: '40px'
-                                    }
+                                    key: 'download-preview', className: 'img-file-preview-download',
+                                    style: { textAlign: 'center', padding: '40px' }
                                 }, [
-                                    createElement('div', {
-                                        key: 'file-icon',
-                                        className: 'img-file-preview-icon',
-                                        style: {
-                                            fontSize: '64px',
-                                            marginBottom: '16px'
-                                        }
-                                    }, '📄'),
-                                    createElement('p', {
-                                        key: 'file-info',
-                                        style: {
-                                            margin: '0 0 20px 0',
-                                            fontSize: '16px',
-                                            color: '#6b7280'
-                                        }
-                                    }, `${previewFile.name} (${formatFileSize(previewFile.size)})`),
+                                    createElement('div', { key: 'file-icon', style: { fontSize: '64px', marginBottom: '16px' } }, '📄'),
+                                    createElement('p', { key: 'file-info', style: { margin: '0 0 20px 0', fontSize: '16px', color: '#6b7280' } },
+                                        `${previewFile.name} (${formatFileSize(previewFile.size)})`),
                                     createElement('a', {
-                                        key: 'download-link',
-                                        href: previewFile.blobUrl,
-                                        download: previewFile.name,
+                                        key: 'download-link', href: previewFile.blobUrl, download: previewFile.name,
                                         className: 'img-file-preview-download-btn',
-                                        style: {
-                                            display: 'inline-block',
-                                            padding: '12px 24px',
-                                            backgroundColor: '#3b82f6',
-                                            color: 'white',
-                                            textDecoration: 'none',
-                                            borderRadius: '8px',
-                                            fontWeight: '500',
-                                            transition: 'all 0.2s ease'
-                                        }
+                                        style: { display: 'inline-block', padding: '12px 24px', backgroundColor: '#3b82f6', color: 'white', textDecoration: 'none', borderRadius: '8px', fontWeight: '500', transition: 'all 0.2s ease' }
                                     }, 'Download File')
                                 ])
                             ) : null
