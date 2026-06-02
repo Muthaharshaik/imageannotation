@@ -306,6 +306,7 @@ function Imageannotator(props) {
 
         return () => {
             console.log(`🔥 [Widget ${widgetInstanceId}] ImageAnnotator unmounted`);
+            logEvent('INFO', 'Widget unmounted', `Instance: ${widgetInstanceId}`); 
             uploadedFiles.forEach(file => {
                 if (file.blobUrl) {
                     URL.revokeObjectURL(file.blobUrl);
@@ -476,9 +477,10 @@ function Imageannotator(props) {
             return finalUrl;
         } catch (error) {
             console.error(`❌ [Widget ${widgetInstanceId}] Error generating signed URL:`, error);
+            logEvent('ERROR', 'generateSignedUrl internal error', error.message);
             throw new Error(`Failed to generate signed URL: ${error.message}`);
         }
-    }, [widgetInstanceId]);
+    }, [widgetInstanceId, logEvent]);
 
     // Generate image URL
     const generateImageUrl = useCallback(async () => {
@@ -636,8 +638,9 @@ function Imageannotator(props) {
         } catch (error) {
             setAiAnnotations([]);
             console.error(`[Widget ${widgetInstanceId}] Failed to parse AI annotations:`, error);
+            logEvent('WARNING', 'Failed to parse AI annotations', error.message); 
         }
-    }, [aiAnnotationsData, isAI, widgetInstanceId]);
+    }, [aiAnnotationsData, isAI, widgetInstanceId, logEvent]);
 
     // Save annotations to Mendix
     const saveAnnotationsToMendix = useCallback((annotationsArray) => {
