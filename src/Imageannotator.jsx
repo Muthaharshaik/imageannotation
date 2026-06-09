@@ -68,6 +68,9 @@ function Imageannotator(props) {
     // ── Ref to break circular dependency between logEvent ↔ executeMendixAction ──
     const logEventRef = useRef(null);
 
+    // ── In-memory log buffer — avoids reading widgetLogs.value on every logEvent call ──
+    const logEntriesRef = useRef([]);
+
     // Core state
     const [annotations, setAnnotations] = useState([]);
     const [imageUrl, setImageUrl] = useState(null);
@@ -256,22 +259,10 @@ function Imageannotator(props) {
                 timestamp: new Date().toISOString()
             };
 
-            // Read any previously stored entries so we can append
-            let existing = [];
-            try {
-                const raw = widgetLogs.value;
-                if (raw && raw.trim() !== '' && raw !== '[]') {
-                    const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed)) existing = parsed;
-                }
-            } catch (_) {
-                existing = [];
-            }
-
-            // Keep only the most-recent 200 entries to avoid unbounded growth
+            // Use in-memory buffer — never read widgetLogs.value to avoid re-render loop
             const MAX_LOG_ENTRIES = 200;
-            const updated = [...existing, entry].slice(-MAX_LOG_ENTRIES);
-            const jsonString = JSON.stringify(updated);
+            logEntriesRef.current = [...logEntriesRef.current, entry].slice(-MAX_LOG_ENTRIES);
+            const jsonString = JSON.stringify(logEntriesRef.current);
 
             // Write back to the Mendix attribute
             if (typeof widgetLogs.setValue === 'function') {
@@ -298,7 +289,7 @@ function Imageannotator(props) {
     // Widget mount/unmount logging
     useEffect(() => {
         console.log(`🚀 [Widget ${widgetInstanceId}] ImageAnnotator initialized`);
-        logEvent('INFO', 'Widget initialized', `Instance: ${widgetInstanceId}`);
+        logEventRef.current?.('INFO', 'Widget initialized', `Instance: ${widgetInstanceId}`);
         addDebugLog("=== MICROFLOW CONFIGURATION CHECK ===");
         addDebugLog(`onAnnotationAdd configured: ${!!onAnnotationAdd}`);
         addDebugLog(`onAnnotationDelete configured: ${!!onAnnotationDelete}`);
@@ -306,14 +297,14 @@ function Imageannotator(props) {
 
         return () => {
             console.log(`🔥 [Widget ${widgetInstanceId}] ImageAnnotator unmounted`);
-            logEvent('INFO', 'Widget unmounted', `Instance: ${widgetInstanceId}`); 
+            logEventRef.current?.('INFO', 'Widget unmounted', `Instance: ${widgetInstanceId}`);
             uploadedFiles.forEach(file => {
                 if (file.blobUrl) {
                     URL.revokeObjectURL(file.blobUrl);
                 }
             });
         };
-    }, [widgetInstanceId, onAnnotationAdd, onAnnotationDelete, addDebugLog, logEvent]);
+    }, [widgetInstanceId, onAnnotationAdd, onAnnotationDelete, addDebugLog]); // logEvent intentionally omitted — use logEventRef.current to avoid re-render loop
 
     // Simple image load handler
     const handleImageLoad = useCallback(() => {
@@ -638,7 +629,7 @@ function Imageannotator(props) {
         } catch (error) {
             setAiAnnotations([]);
             console.error(`[Widget ${widgetInstanceId}] Failed to parse AI annotations:`, error);
-            logEvent('WARNING', 'Failed to parse AI annotations', error.message); 
+            logEvent('WARNING', 'Failed to parse AI annotations', error.message);
         }
     }, [aiAnnotationsData, isAI, widgetInstanceId, logEvent]);
 
